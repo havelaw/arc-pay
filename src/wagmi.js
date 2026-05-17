@@ -3,14 +3,14 @@ import { defineChain } from 'viem'
 import { injected, metaMask } from 'wagmi/connectors'
 
 export const arcTestnet = defineChain({
-  id: 40404,
+  id: 5042002,
   name: 'Arc Testnet',
-  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://rpc-testnet.arc.circle.com'] },
+    default: { http: ['https://rpc.testnet.arc.network'] },
   },
   blockExplorers: {
-    default: { name: 'Arc Explorer', url: 'https://explorer-testnet.arc.circle.com' },
+    default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },
   },
   testnet: true,
 })

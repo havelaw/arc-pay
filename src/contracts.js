@@ -3,7 +3,7 @@ import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 
 import arcSplitAbi from './abi/ArcSplit.json'
 
 const ARCSPLIT_ADDRESS = import.meta.env.VITE_ARCSPLIT_ADDRESS
-const USDC_ADDRESS = import.meta.env.VITE_USDC_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+const USDC_ADDRESS = import.meta.env.VITE_USDC_ADDRESS || '0x3600000000000000000000000000000000000000'
 const USDC_DECIMALS = 6
 
 export const ERC20_ABI = [
