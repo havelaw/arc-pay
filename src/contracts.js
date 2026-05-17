@@ -93,7 +93,16 @@ export function useGetSplit(splitId) {
     address: ARCSPLIT_ADDRESS,
     abi: arcSplitAbi,
     functionName: 'getSplit',
-    args: splitId !== undefined ? [BigInt(splitId)] : undefined,
-    query: { enabled: splitId !== undefined && isContractDeployed() },
+    args: splitId !== undefined && splitId !== null ? [BigInt(splitId)] : undefined,
+    query: { enabled: splitId !== undefined && splitId !== null && isContractDeployed() },
+  })
+}
+
+export function useSplitCount() {
+  return useReadContract({
+    address: ARCSPLIT_ADDRESS,
+    abi: arcSplitAbi,
+    functionName: 'splitCount',
+    query: { enabled: isContractDeployed() },
   })
 }

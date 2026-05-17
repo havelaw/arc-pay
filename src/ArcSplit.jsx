@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSwitchChain, useChainId } from "wagmi";
 import { formatUnits } from "viem";
 import { detectLanguage, getTranslations } from "./i18n";
 import { walletOptions } from "./wagmi";
 import { useExchangeRate } from "./useExchangeRate";
-import { useUSDCBalance, useCreateSplit, usePayShare, isContractDeployed } from "./contracts";
+import { useUSDCBalance, useCreateSplit, usePayShare, useGetSplit, useSplitCount, isContractDeployed } from "./contracts";
 
 const HISTORY_KO = [
   { id: 1, title: "강남 스시오마카세", total: 320000, members: 4, myShare: 80000, payer: "나", time: "오늘", status: "pending", pending: 2, emoji: "🍣" },
@@ -51,12 +51,23 @@ export default function ArcSplit() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
+  const { switchChain } = useSwitchChain();
+  const chainId = useChainId();
+  const isWrongChain = isConnected && chainId !== 5042002;
+
   const { data: usdcRaw } = useUSDCBalance(address);
   const usdcBalance = usdcRaw ? parseFloat(formatUnits(usdcRaw, 6)) : null;
-  const contractReady = isConnected && isContractDeployed();
+  const contractReady = isConnected && !isWrongChain && isContractDeployed();
 
-  const { createSplit: createSplitOnChain, isPending: isCreating, isSuccess: createSuccess, hash: createHash } = useCreateSplit();
-  const { payShare: payShareOnChain, approveAndPay, isPending: isPaying, isSuccess: paySuccess, hash: payHash } = usePayShare();
+  const { createSplit: createSplitOnChain, isPending: isCreating, isConfirming: isCreateConfirming, isSuccess: createSuccess, hash: createHash, error: createError } = useCreateSplit();
+  const { payShare: payShareOnChain, approveAndPay, isPending: isPaying, isConfirming: isPayConfirming, isSuccess: paySuccess, hash: payHash, error: payError } = usePayShare();
+  const { data: splitCount } = useSplitCount();
+
+  useEffect(() => {
+    if (createSuccess && splitCount !== undefined) {
+      setCreatedSplitId(Number(splitCount) - 1);
+    }
+  }, [createSuccess, splitCount]);
 
   const [showWalletModal, setShowWalletModal] = useState(false);
 
@@ -72,6 +83,19 @@ export default function ArcSplit() {
   const [paying, setPaying] = useState(false);
   const [payDone, setPayDone] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [createdSplitId, setCreatedSplitId] = useState(null);
+  const [urlSplitId, setUrlSplitId] = useState(null);
+
+  const { data: urlSplitData } = useGetSplit(urlSplitId);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const splitParam = params.get("split");
+    if (splitParam !== null) {
+      setUrlSplitId(Number(splitParam));
+      setScreen("pay-link");
+    }
+  }, []);
 
   const shortAddr = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
 
@@ -91,6 +115,10 @@ export default function ArcSplit() {
     setPayDone(false);
     setPaying(false);
     setLinkCopied(false);
+    setUrlSplitId(null);
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   };
 
   const handleCreate = () => {
@@ -100,10 +128,25 @@ export default function ArcSplit() {
     }
     setSettling(true);
     setSettleStep(0);
-    setTimeout(() => setSettleStep(1), 500);
-    setTimeout(() => setSettleStep(2), 1000);
-    setTimeout(() => { setSettling(false); setSettled(true); }, 1600);
   };
+
+  useEffect(() => {
+    if (settling && createHash) setSettleStep(1);
+  }, [settling, createHash]);
+
+  useEffect(() => {
+    if (settling && createSuccess) {
+      setSettleStep(2);
+      setTimeout(() => { setSettling(false); setSettled(true); }, 600);
+    }
+  }, [settling, createSuccess]);
+
+  useEffect(() => {
+    if (settling && createError) {
+      setSettling(false);
+      setSettleStep(0);
+    }
+  }, [settling, createError]);
 
   const handlePay = (splitId, usdcAmount) => {
     if (contractReady && splitId !== undefined) {
@@ -111,13 +154,32 @@ export default function ArcSplit() {
     }
     setPaying(true);
     setPayStep(0);
-    setTimeout(() => setPayStep(1), 400);
-    setTimeout(() => setPayStep(2), 800);
-    setTimeout(() => { setPaying(false); setPayDone(true); }, 1300);
   };
 
+  useEffect(() => {
+    if (paying && payHash) setPayStep(1);
+  }, [paying, payHash]);
+
+  useEffect(() => {
+    if (paying && paySuccess) {
+      setPayStep(2);
+      setTimeout(() => { setPaying(false); setPayDone(true); }, 600);
+    }
+  }, [paying, paySuccess]);
+
+  useEffect(() => {
+    if (paying && payError) {
+      setPaying(false);
+      setPayStep(0);
+    }
+  }, [paying, payError]);
+
+  const shareUrl = createdSplitId !== null
+    ? `${window.location.origin}${window.location.pathname}?split=${createdSplitId}`
+    : `${window.location.origin}${window.location.pathname}`;
+
   const handleCopyLink = () => {
-    navigator.clipboard.writeText("https://arcsplit.xyz/s/a7f3d2e8");
+    navigator.clipboard.writeText(shareUrl);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
@@ -177,13 +239,17 @@ export default function ArcSplit() {
               {lang === "ko" ? "EN" : "KR"}
             </button>
             {isConnected ? (
-              <button onClick={() => setShowWalletModal(true)} style={{
+              <button onClick={() => isWrongChain ? switchChain({ chainId: 5042002 }) : setShowWalletModal(true)} style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
-                borderRadius: 20, background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.15)",
+                borderRadius: 20,
+                background: isWrongChain ? "rgba(249,115,22,.08)" : "rgba(34,197,94,.08)",
+                border: `1px solid ${isWrongChain ? "rgba(249,115,22,.15)" : "rgba(34,197,94,.15)"}`,
                 cursor: "pointer", fontFamily: font,
               }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e" }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#22c55e", fontFamily: mono }}>{shortAddr}</span>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: isWrongChain ? "#f97316" : "#22c55e" }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: isWrongChain ? "#f97316" : "#22c55e", fontFamily: mono }}>
+                  {isWrongChain ? (lang === "ko" ? "네트워크 전환" : "Switch") : shortAddr}
+                </span>
               </button>
             ) : (
               <button onClick={() => setShowWalletModal(true)} style={{
@@ -558,7 +624,7 @@ export default function ArcSplit() {
                   fontFamily: mono, fontSize: 12, color: "#64748b",
                   wordBreak: "break-all",
                 }}>
-                  https://arcsplit.xyz/s/a7f3d2e8
+                  {shareUrl}
                 </div>
                 <button onClick={handleCopyLink} style={{
                   width: "100%", marginTop: 10, padding: "10px", borderRadius: 10,
@@ -578,16 +644,25 @@ export default function ArcSplit() {
                 marginTop: 14, padding: "12px 14px", borderRadius: 12,
                 background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11,
               }}>
-                {[
-                  { l: "Network", v: "Arc Testnet", c: "#6366F1" },
-                  { l: "Tx", v: createHash ? `${createHash.slice(0,6)}...${createHash.slice(-4)}` : "—", c: "#6366F1" },
-                  { l: "Finality", v: "~0.3s", c: "#64748b" },
-                  { l: "Gas", v: "~$0.001 USDC", c: "#22c55e" },
-                ].map((r, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: "#94a3b8" }}>
-                    <span>{r.l}</span><span style={{ color: r.c, fontWeight: 600 }}>{r.v}</span>
-                  </div>
-                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: "#94a3b8" }}>
+                  <span>Network</span><span style={{ color: "#6366F1", fontWeight: 600 }}>Arc Testnet</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: "#94a3b8" }}>
+                  <span>Tx</span>
+                  {createHash ? (
+                    <a href={`https://testnet.arcscan.app/tx/${createHash}`} target="_blank" rel="noopener noreferrer"
+                      style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
+                      onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                      onMouseLeave={e => e.target.style.textDecoration = "none"}
+                    >{createHash.slice(0,6)}...{createHash.slice(-4)} ↗</a>
+                  ) : <span style={{ color: "#6366F1", fontWeight: 600 }}>—</span>}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: "#94a3b8" }}>
+                  <span>Finality</span><span style={{ color: "#64748b", fontWeight: 600 }}>~0.3s</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: "#94a3b8" }}>
+                  <span>Gas</span><span style={{ color: "#22c55e", fontWeight: 600 }}>~$0.001 USDC</span>
+                </div>
               </div>
             </div>
 
@@ -697,7 +772,14 @@ export default function ArcSplit() {
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.payTime("0.31")}</div>
                   <div style={{ marginTop: 12, padding: "10px", borderRadius: 10, background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11, color: "#94a3b8", textAlign: "left" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span>Tx</span><span style={{ color: "#6366F1" }}>{payHash ? `${payHash.slice(0,6)}...${payHash.slice(-4)}` : "0xb8c4...f1a2"}</span>
+                      <span>Tx</span>
+                      {payHash ? (
+                        <a href={`https://testnet.arcscan.app/tx/${payHash}`} target="_blank" rel="noopener noreferrer"
+                          style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
+                          onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                          onMouseLeave={e => e.target.style.textDecoration = "none"}
+                        >{payHash.slice(0,6)}...{payHash.slice(-4)} ↗</a>
+                      ) : <span style={{ color: "#6366F1" }}>0xb8c4...f1a2</span>}
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                       <span>Gas</span><span style={{ color: "#22c55e" }}>$0.0004 USDC</span>
@@ -706,6 +788,116 @@ export default function ArcSplit() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* PAY VIA SHARE LINK */}
+        {screen === "pay-link" && (
+          <div style={{ animation: "fadeUp .4s ease", paddingBottom: 40 }}>
+            <button onClick={() => { setScreen("home"); setUrlSplitId(null); window.history.replaceState({}, "", window.location.pathname); }}
+              style={{ marginTop: 16, background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", fontFamily: font, fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+              {t.back}
+            </button>
+
+            {urlSplitData ? (() => {
+              const [creator, splitTitle, totalAmount, perPersonAmt, memberCnt, paidCnt, isSettled] = urlSplitData;
+              const totalUSDC = parseFloat(formatUnits(totalAmount, 6));
+              const perUSDC = parseFloat(formatUnits(perPersonAmt, 6));
+              const totalLocal = Math.round(totalUSDC * rate);
+              const perLocal = Math.round(perUSDC * rate);
+
+              return (
+                <div style={{
+                  marginTop: 14, padding: "24px", borderRadius: 22,
+                  background: "rgba(255,255,255,.85)", backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(0,0,0,.04)", boxShadow: "0 6px 24px rgba(0,0,0,.04)",
+                }}>
+                  <div style={{ textAlign: "center", marginBottom: 20 }}>
+                    <div style={{ fontSize: 48, marginBottom: 8 }}>💸</div>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>{splitTitle}</h2>
+                    <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
+                      {t.people(memberCnt)} · {paidCnt}/{memberCnt} {lang === "ko" ? "결제완료" : "paid"}
+                    </p>
+                    <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2, fontFamily: mono }}>
+                      {lang === "ko" ? "요청자" : "Creator"}: {creator.slice(0,6)}...{creator.slice(-4)}
+                    </p>
+                  </div>
+
+                  <div style={{
+                    padding: "20px", borderRadius: 16,
+                    background: "linear-gradient(135deg, rgba(99,102,241,.04), rgba(139,92,246,.04))",
+                    border: "1px solid rgba(99,102,241,.08)", textAlign: "center", marginBottom: 20,
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 4 }}>{t.myShare}</div>
+                    <div style={{ fontSize: 34, fontWeight: 800, color: "#6366F1", fontFamily: mono, letterSpacing: "-.03em" }}>
+                      {t.currencySymbol}{fmt(perLocal, lang)}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
+                      ≈ ${perUSDC.toFixed(2)} USDC
+                    </div>
+                  </div>
+
+                  {isSettled ? (
+                    <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)" }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{lang === "ko" ? "정산 완료" : "Fully Settled"}</div>
+                    </div>
+                  ) : !payDone ? (
+                    <button onClick={() => handlePay(urlSplitId, perUSDC)} disabled={paying || !contractReady}
+                      style={{
+                        width: "100%", padding: "18px", borderRadius: 18,
+                        border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
+                        background: !contractReady ? "rgba(0,0,0,.06)" : paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                        color: !contractReady ? "#94a3b8" : "#fff",
+                        fontSize: 16, fontWeight: 700, fontFamily: font,
+                        boxShadow: (contractReady && !paying) ? "0 6px 24px rgba(99,102,241,.3)" : "none",
+                        transition: "all .3s",
+                      }}>
+                      {!isConnected ? t.connectWallet : isWrongChain ? (lang === "ko" ? "네트워크 전환 필요" : "Switch to Arc") : paying ? (
+                        <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
+                          {[t.approving, t.sending, t.done].map((s, i) => (
+                            <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
+                              {payStep > i ? "✓ " : ""}{s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : t.sendUSDC(perUSDC.toFixed(2))}
+                    </button>
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)", animation: "popIn .4s ease" }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{t.payComplete}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.payTime("0.31")}</div>
+                      <div style={{ marginTop: 12, padding: "10px", borderRadius: 10, background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11, color: "#94a3b8", textAlign: "left" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span>Tx</span>
+                          {payHash ? (
+                            <a href={`https://testnet.arcscan.app/tx/${payHash}`} target="_blank" rel="noopener noreferrer"
+                              style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
+                              onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                              onMouseLeave={e => e.target.style.textDecoration = "none"}
+                            >{payHash.slice(0,6)}...{payHash.slice(-4)} ↗</a>
+                          ) : <span style={{ color: "#6366F1" }}>—</span>}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span>Gas</span><span style={{ color: "#22c55e" }}>~$0.001 USDC</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                <div style={{ fontSize: 32, marginBottom: 12, animation: "float 2s ease-in-out infinite" }}>🔍</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#64748b" }}>
+                  {lang === "ko" ? "정산 정보를 불러오는 중..." : "Loading split data..."}
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+                  Split #{urlSplitId}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -733,20 +925,34 @@ export default function ArcSplit() {
             {isConnected && (
               <div style={{
                 padding: "14px 16px", borderRadius: 14, marginBottom: 12,
-                background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)",
+                background: isWrongChain ? "rgba(249,115,22,.04)" : "rgba(34,197,94,.04)",
+                border: `1px solid ${isWrongChain ? "rgba(249,115,22,.1)" : "rgba(34,197,94,.1)"}`,
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#22c55e", marginBottom: 2 }}>{t.walletConnected}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: isWrongChain ? "#f97316" : "#22c55e", marginBottom: 2 }}>
+                    {isWrongChain ? (lang === "ko" ? "⚠️ 네트워크 전환 필요" : "⚠️ Wrong Network") : t.walletConnected}
+                  </div>
                   <div style={{ fontSize: 13, fontWeight: 600, fontFamily: mono, color: "#1a1a2e" }}>{shortAddr}</div>
                 </div>
-                <button onClick={() => { disconnect(); setShowWalletModal(false); }} style={{
-                  padding: "8px 14px", borderRadius: 10,
-                  border: "1px solid rgba(239,68,68,.15)", background: "rgba(239,68,68,.04)",
-                  color: "#ef4444", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: font,
-                }}>
-                  {t.disconnect}
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {isWrongChain && (
+                    <button onClick={() => { switchChain({ chainId: 5042002 }); }} style={{
+                      padding: "8px 14px", borderRadius: 10,
+                      border: "none", background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                      color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: font,
+                    }}>
+                      {lang === "ko" ? "Arc 전환" : "Switch"}
+                    </button>
+                  )}
+                  <button onClick={() => { disconnect(); setShowWalletModal(false); }} style={{
+                    padding: "8px 14px", borderRadius: 10,
+                    border: "1px solid rgba(239,68,68,.15)", background: "rgba(239,68,68,.04)",
+                    color: "#ef4444", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: font,
+                  }}>
+                    {t.disconnect}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -761,7 +967,7 @@ export default function ArcSplit() {
                   <button key={w.id}
                     onClick={() => {
                       if (connector) {
-                        connect({ connector });
+                        connect({ connector, chainId: 5042002 });
                         setShowWalletModal(false);
                       }
                     }}
