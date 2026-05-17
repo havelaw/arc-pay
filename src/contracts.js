@@ -1,5 +1,6 @@
-import { parseUnits } from 'viem'
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { parseUnits, formatUnits } from 'viem'
+import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useMemo } from 'react'
 import arcSplitAbi from './abi/ArcSplit.json'
 
 const ARCSPLIT_ADDRESS = import.meta.env.VITE_ARCSPLIT_ADDRESS
@@ -105,4 +106,51 @@ export function useSplitCount() {
     functionName: 'splitCount',
     query: { enabled: isContractDeployed() },
   })
+}
+
+export function useAllSplits(userAddress) {
+  const { data: countRaw, refetch: refetchCount } = useSplitCount()
+  const count = countRaw !== undefined ? Number(countRaw) : 0
+
+  const contracts = useMemo(() => {
+    if (!count) return []
+    return Array.from({ length: count }, (_, i) => ({
+      address: ARCSPLIT_ADDRESS,
+      abi: arcSplitAbi,
+      functionName: 'getSplit',
+      args: [BigInt(i)],
+    }))
+  }, [count])
+
+  const { data: results, refetch: refetchSplits } = useReadContracts({
+    contracts,
+    query: { enabled: count > 0 && isContractDeployed() },
+  })
+
+  const splits = useMemo(() => {
+    if (!results) return []
+    return results
+      .map((r, i) => {
+        if (r.status !== 'success') return null
+        const [creator, title, totalAmount, perPerson, memberCount, paidCount, settled, createdAt] = r.result
+        return {
+          id: i,
+          creator,
+          title,
+          totalUSDC: parseFloat(formatUnits(totalAmount, USDC_DECIMALS)),
+          perPersonUSDC: parseFloat(formatUnits(perPerson, USDC_DECIMALS)),
+          memberCount,
+          paidCount,
+          settled,
+          createdAt: Number(createdAt),
+          isMine: userAddress && creator.toLowerCase() === userAddress.toLowerCase(),
+        }
+      })
+      .filter(Boolean)
+      .reverse()
+  }, [results, userAddress])
+
+  const refetch = () => { refetchCount(); refetchSplits(); }
+
+  return { splits, count, refetch }
 }

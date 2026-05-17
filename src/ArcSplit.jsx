@@ -4,21 +4,7 @@ import { formatUnits } from "viem";
 import { detectLanguage, getTranslations } from "./i18n";
 import { walletOptions } from "./wagmi";
 import { useExchangeRate } from "./useExchangeRate";
-import { useUSDCBalance, useCreateSplit, usePayShare, useGetSplit, useSplitCount, isContractDeployed } from "./contracts";
-
-const HISTORY_KO = [
-  { id: 1, title: "강남 스시오마카세", total: 320000, members: 4, myShare: 80000, payer: "나", time: "오늘", status: "pending", pending: 2, emoji: "🍣" },
-  { id: 2, title: "카페 라떼 4잔", total: 24000, members: 4, myShare: 6000, payer: "민수", time: "어제", status: "paid", pending: 0, emoji: "☕" },
-  { id: 3, title: "택시비 홍대→강남", total: 18500, members: 3, myShare: 6167, payer: "나", time: "3일 전", status: "settled", pending: 0, emoji: "🚕" },
-  { id: 4, title: "BBQ 치킨 2마리", total: 42000, members: 3, myShare: 14000, payer: "지은", time: "지난주", status: "paid", pending: 0, emoji: "🍗" },
-];
-
-const HISTORY_EN = [
-  { id: 1, title: "Sushi Omakase", total: 232, members: 4, myShare: 58, payer: "me", time: "Today", status: "pending", pending: 2, emoji: "🍣" },
-  { id: 2, title: "Cafe Lattes x4", total: 18, members: 4, myShare: 4.5, payer: "Minsu", time: "Yesterday", status: "paid", pending: 0, emoji: "☕" },
-  { id: 3, title: "Taxi Ride", total: 13.5, members: 3, myShare: 4.5, payer: "me", time: "3d ago", status: "settled", pending: 0, emoji: "🚕" },
-  { id: 4, title: "BBQ Chicken x2", total: 30, members: 3, myShare: 10, payer: "Jieun", time: "Last week", status: "paid", pending: 0, emoji: "🍗" },
-];
+import { useUSDCBalance, useCreateSplit, usePayShare, useGetSplit, useSplitCount, useAllSplits, isContractDeployed } from "./contracts";
 
 const fmt = (n, lang) => lang === "ko" ? n.toLocaleString("ko-KR") : n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 
@@ -41,11 +27,11 @@ function AnimNum({ value, decimals = 0, duration = 600 }) {
 export default function ArcSplit() {
   const [lang, setLang] = useState(detectLanguage);
   const t = getTranslations(lang);
-  const HISTORY = lang === "ko" ? HISTORY_KO : HISTORY_EN;
   const { rates } = useExchangeRate();
   const rate = lang === "ko" ? rates.krw : rates.usd;
 
   const toUSDC = (amt) => (amt / rate).toFixed(2);
+  const fromUSDC = (usdc) => Math.round(usdc * rate);
   const fmtCurrency = (n) => `${t.currencySymbol}${fmt(n, lang)}`;
 
   const { address, isConnected } = useAccount();
@@ -62,12 +48,25 @@ export default function ArcSplit() {
   const { createSplit: createSplitOnChain, isPending: isCreating, isConfirming: isCreateConfirming, isSuccess: createSuccess, hash: createHash, error: createError } = useCreateSplit();
   const { payShare: payShareOnChain, approveAndPay, isPending: isPaying, isConfirming: isPayConfirming, isSuccess: paySuccess, hash: payHash, error: payError } = usePayShare();
   const { data: splitCount } = useSplitCount();
+  const { splits: allSplits, refetch: refetchSplits } = useAllSplits(address);
+
+  const toReceiveUSDC = allSplits
+    .filter(s => s.isMine && !s.settled)
+    .reduce((sum, s) => sum + s.perPersonUSDC * (s.memberCount - 1 - s.paidCount), 0);
+  const toSendUSDC = allSplits
+    .filter(s => !s.isMine && !s.settled)
+    .reduce((sum, s) => sum + s.perPersonUSDC, 0);
 
   useEffect(() => {
     if (createSuccess && splitCount !== undefined) {
       setCreatedSplitId(Number(splitCount) - 1);
+      refetchSplits();
     }
   }, [createSuccess, splitCount]);
+
+  useEffect(() => {
+    if (paySuccess) refetchSplits();
+  }, [paySuccess]);
 
   const [showWalletModal, setShowWalletModal] = useState(false);
 
@@ -186,7 +185,6 @@ export default function ArcSplit() {
 
   const font = "'Outfit', 'Pretendard', -apple-system, sans-serif";
   const mono = "'IBM Plex Mono', 'SF Mono', monospace";
-  const isMePayer = (h) => h.payer === "나" || h.payer === "me";
 
   return (
     <div style={{
@@ -294,8 +292,8 @@ export default function ArcSplit() {
 
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               {[
-                { label: t.toReceive, val: fmtCurrency(lang === "ko" ? 160000 : 116), color: "#6366F1", bg: "rgba(99,102,241,.06)" },
-                { label: t.toSend, val: fmtCurrency(0), color: "#f97316", bg: "rgba(249,115,22,.06)" },
+                { label: t.toReceive, val: fmtCurrency(fromUSDC(toReceiveUSDC)), color: "#6366F1", bg: "rgba(99,102,241,.06)" },
+                { label: t.toSend, val: fmtCurrency(fromUSDC(toSendUSDC)), color: "#f97316", bg: "rgba(249,115,22,.06)" },
               ].map((s, i) => (
                 <div key={i} style={{
                   flex: 1, padding: "16px", borderRadius: 18,
@@ -327,49 +325,72 @@ export default function ArcSplit() {
             <div style={{ marginTop: 28 }}>
               <h3 style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", letterSpacing: ".04em", marginBottom: 14 }}>{t.recentSplits}</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {HISTORY.map((h, i) => (
-                  <div key={h.id}
-                    onClick={() => { if (h.status === "pending") { setViewItem(h); setScreen("view"); } }}
-                    style={{
-                      padding: "16px 18px", borderRadius: 18,
-                      background: "rgba(255,255,255,.7)", backdropFilter: "blur(10px)",
-                      border: "1px solid rgba(255,255,255,.8)",
-                      boxShadow: "0 2px 12px rgba(0,0,0,.03)",
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      cursor: h.status === "pending" ? "pointer" : "default",
-                      animation: `fadeUp .35s ease ${.04 * i}s both`,
-                      transition: "all .2s",
-                    }}
-                    onMouseEnter={e => { if (h.status === "pending") e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,.06)"; }}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,.03)"}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <div style={{
-                        width: 44, height: 44, borderRadius: 14,
-                        background: h.status === "pending" ? "rgba(99,102,241,.08)" : "rgba(0,0,0,.03)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 22,
-                      }}>{h.emoji}</div>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "#1a1a2e" }}>{h.title}</div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                          {isMePayer(h) ? t.iPaid : t.paidBy(h.payer)} · {t.people(h.members)} · {h.time}
+                {allSplits.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "30px 20px", color: "#94a3b8", fontSize: 13 }}>
+                    {lang === "ko" ? "아직 정산 내역이 없어요" : "No splits yet"}
+                  </div>
+                )}
+                {allSplits.map((s, i) => {
+                  const status = s.settled ? "settled" : s.paidCount < s.memberCount - 1 ? "pending" : "settled";
+                  const pending = s.memberCount - 1 - s.paidCount;
+                  const localAmt = fromUSDC(s.isMine ? s.perPersonUSDC * (s.memberCount - 1) : s.perPersonUSDC);
+                  const timeAgo = (() => {
+                    const diff = Math.floor(Date.now() / 1000) - s.createdAt;
+                    if (diff < 60) return lang === "ko" ? "방금" : "Just now";
+                    if (diff < 3600) return lang === "ko" ? `${Math.floor(diff / 60)}분 전` : `${Math.floor(diff / 60)}m ago`;
+                    if (diff < 86400) return lang === "ko" ? `${Math.floor(diff / 3600)}시간 전` : `${Math.floor(diff / 3600)}h ago`;
+                    return lang === "ko" ? `${Math.floor(diff / 86400)}일 전` : `${Math.floor(diff / 86400)}d ago`;
+                  })();
+                  return (
+                    <div key={s.id}
+                      onClick={() => {
+                        window.history.replaceState({}, "", `?split=${s.id}`);
+                        setUrlSplitId(s.id);
+                        setPayDone(false);
+                        setPaying(false);
+                        setScreen("pay-link");
+                      }}
+                      style={{
+                        padding: "16px 18px", borderRadius: 18,
+                        background: "rgba(255,255,255,.7)", backdropFilter: "blur(10px)",
+                        border: "1px solid rgba(255,255,255,.8)",
+                        boxShadow: "0 2px 12px rgba(0,0,0,.03)",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        cursor: "pointer",
+                        animation: `fadeUp .35s ease ${.04 * i}s both`,
+                        transition: "all .2s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,.06)"}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,.03)"}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 14,
+                          background: status === "pending" ? "rgba(99,102,241,.08)" : "rgba(0,0,0,.03)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 22,
+                        }}>{s.isMine ? "📤" : "📥"}</div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: "#1a1a2e" }}>{s.title}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                            {s.isMine ? t.iPaid : t.paidBy(s.creator.slice(0,6)+"...")} · {t.people(s.memberCount)} · {timeAgo}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
+                          {fmtCurrency(localAmt)}
+                        </div>
+                        <div style={{
+                          fontSize: 10, fontWeight: 600, marginTop: 2,
+                          color: status === "pending" ? "#f97316" : "#22c55e",
+                        }}>
+                          {status === "pending" ? t.pendingCount(pending) : t.splitDone}
                         </div>
                       </div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
-                        {fmtCurrency(h.myShare)}
-                      </div>
-                      <div style={{
-                        fontSize: 10, fontWeight: 600, marginTop: 2,
-                        color: h.status === "pending" ? "#f97316" : h.status === "paid" ? "#6366F1" : "#22c55e",
-                      }}>
-                        {h.status === "pending" ? t.pendingCount(h.pending) : h.status === "paid" ? t.payDone : t.splitDone}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -678,118 +699,6 @@ export default function ArcSplit() {
           </div>
         )}
 
-        {/* VIEW PENDING */}
-        {screen === "view" && viewItem && (
-          <div style={{ animation: "fadeUp .4s ease", paddingBottom: 40 }}>
-            <button onClick={goHome} style={{ marginTop: 16, background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", fontFamily: font, fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-              {t.back}
-            </button>
-
-            <div style={{
-              marginTop: 14, padding: "24px", borderRadius: 22,
-              background: "rgba(255,255,255,.85)", backdropFilter: "blur(12px)",
-              border: "1px solid rgba(0,0,0,.04)",
-              boxShadow: "0 6px 24px rgba(0,0,0,.04)",
-            }}>
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <div style={{ fontSize: 48, marginBottom: 8 }}>{viewItem.emoji}</div>
-                <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>{viewItem.title}</h2>
-                <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
-                  {isMePayer(viewItem) ? t.iPaid : t.paidBy(viewItem.payer)} · {t.people(viewItem.members)}
-                </p>
-              </div>
-
-              <div style={{
-                padding: "20px", borderRadius: 16,
-                background: "linear-gradient(135deg, rgba(99,102,241,.04), rgba(139,92,246,.04))",
-                border: "1px solid rgba(99,102,241,.08)",
-                textAlign: "center", marginBottom: 20,
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 4 }}>{t.myShare}</div>
-                <div style={{ fontSize: 34, fontWeight: 800, color: "#6366F1", fontFamily: mono, letterSpacing: "-.03em" }}>
-                  {fmtCurrency(viewItem.myShare)}
-                </div>
-                <div style={{ fontSize: 13, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
-                  ≈ ${toUSDC(viewItem.myShare)} USDC
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>{t.splitStatus}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#6366F1" }}>{t.paidOf(viewItem.members - viewItem.pending, viewItem.members)}</div>
-                </div>
-                {[
-                  { name: lang === "ko" ? "민수" : "Minsu", status: "paid", emoji: "😎" },
-                  { name: lang === "ko" ? "지은" : "Jieun", status: "pending", emoji: "💜" },
-                  { name: lang === "ko" ? "현우" : "Hyunwoo", status: "pending", emoji: "🔥" },
-                ].map((m, i) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "10px 0", borderBottom: i < 2 ? "1px solid rgba(0,0,0,.04)" : "none",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 18 }}>{m.emoji}</span>
-                      <span style={{ fontSize: 14, fontWeight: 500 }}>{m.name}</span>
-                    </div>
-                    <div style={{
-                      padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                      background: m.status === "paid" ? "rgba(34,197,94,.08)" : "rgba(249,115,22,.08)",
-                      color: m.status === "paid" ? "#22c55e" : "#f97316",
-                    }}>
-                      {m.status === "paid" ? t.paid : t.waiting}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {!payDone && !isMePayer(viewItem) && (
-                <button onClick={handlePay} disabled={paying}
-                  style={{
-                    width: "100%", padding: "18px", borderRadius: 18,
-                    border: "none", cursor: paying ? "wait" : "pointer",
-                    background: paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                    color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: font,
-                    boxShadow: paying ? "none" : "0 6px 24px rgba(99,102,241,.3)",
-                    transition: "all .3s",
-                  }}>
-                  {paying ? (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
-                      {[t.approving, t.sending, t.done].map((s, i) => (
-                        <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
-                          {payStep > i ? "✓ " : ""}{s}
-                        </span>
-                      ))}
-                    </div>
-                  ) : t.sendUSDC(toUSDC(viewItem.myShare))}
-                </button>
-              )}
-
-              {payDone && (
-                <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)", animation: "popIn .4s ease" }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{t.payComplete}</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.payTime("0.31")}</div>
-                  <div style={{ marginTop: 12, padding: "10px", borderRadius: 10, background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11, color: "#94a3b8", textAlign: "left" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span>Tx</span>
-                      {payHash ? (
-                        <a href={`https://testnet.arcscan.app/tx/${payHash}`} target="_blank" rel="noopener noreferrer"
-                          style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
-                          onMouseEnter={e => e.target.style.textDecoration = "underline"}
-                          onMouseLeave={e => e.target.style.textDecoration = "none"}
-                        >{payHash.slice(0,6)}...{payHash.slice(-4)} ↗</a>
-                      ) : <span style={{ color: "#6366F1" }}>0xb8c4...f1a2</span>}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span>Gas</span><span style={{ color: "#22c55e" }}>$0.0004 USDC</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* PAY VIA SHARE LINK */}
         {screen === "pay-link" && (
