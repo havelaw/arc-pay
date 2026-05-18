@@ -564,6 +564,43 @@ export default function ArcSplit() {
               </div>
             </div>
 
+            {/* On-chain Stats */}
+            {(() => {
+              const totalSplits = allSplits.length;
+              const totalVolume = allSplits.reduce((sum, s) => sum + s.totalUSDC, 0);
+              const totalPaid = allSplits.reduce((sum, s) => sum + s.paidCount, 0);
+              const settledCount = allSplits.filter(s => s.settled).length;
+              return (
+                <div style={{
+                  marginTop: 24, padding: "18px 20px", borderRadius: 18,
+                  background: "linear-gradient(135deg, rgba(99,102,241,.04), rgba(139,92,246,.02))",
+                  border: "1px solid rgba(99,102,241,.1)",
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#6366F1", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                    📊 {lang === "ko" ? "온체인 통계" : "On-chain Stats"}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {[
+                      { label: lang === "ko" ? "총 정산" : "Total Splits", value: totalSplits, icon: "📋" },
+                      { label: lang === "ko" ? "정산 완료" : "Settled", value: settledCount, icon: "✅" },
+                      { label: lang === "ko" ? "총 USDC" : "Total USDC", value: `$${totalVolume.toFixed(2)}`, icon: "💰" },
+                      { label: lang === "ko" ? "총 결제" : "Payments", value: totalPaid, icon: "👥" },
+                    ].map((item, i) => (
+                      <div key={i} style={{
+                        padding: "12px 14px", borderRadius: 12,
+                        background: "rgba(255,255,255,.6)", border: "1px solid rgba(0,0,0,.03)",
+                      }}>
+                        <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>{item.icon} {item.label}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, fontFamily: mono, color: "#1a1a2e" }}>
+                          {typeof item.value === "number" ? <AnimNum value={item.value} /> : item.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Why ArcSplit */}
             <div style={{
               marginTop: 24, padding: "16px 20px", borderRadius: 16,
