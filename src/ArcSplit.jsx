@@ -190,6 +190,22 @@ export default function ArcSplit() {
     }
   };
 
+  const compressImage = (file, maxWidth = 1200) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ratio = Math.min(maxWidth / img.width, 1);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleReceiptCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -198,31 +214,28 @@ export default function ArcSplit() {
     setReceiptError(null);
     setReceiptItems(null);
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const res = await fetch('/api/parse-receipt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: reader.result }),
-        });
-        const data = await res.json();
-        if (data.error) {
-          setReceiptError(data.error);
-        } else {
-          setReceiptItems(data);
-          setTitle(data.title || '');
-          setAmount(String(data.total || ''));
-          setScreen('create');
-        }
-      } catch (err) {
-        setReceiptError(lang === 'ko' ? '영수증 분석에 실패했어요' : 'Failed to analyze receipt');
-      } finally {
-        setReceiptParsing(false);
-        e.target.value = '';
+    try {
+      const compressed = await compressImage(file);
+      const res = await fetch('/api/parse-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: compressed }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setReceiptError(data.error);
+      } else {
+        setReceiptItems(data);
+        setTitle(data.title || '');
+        setAmount(String(data.total || ''));
+        setScreen('create');
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setReceiptError(lang === 'ko' ? '영수증 분석에 실패했어요' : 'Failed to analyze receipt');
+    } finally {
+      setReceiptParsing(false);
+      e.target.value = '';
+    }
   };
 
   useEffect(() => {

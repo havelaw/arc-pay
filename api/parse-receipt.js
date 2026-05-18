@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -12,13 +14,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'No image provided' });
   }
 
-  const base64Match = image.match(/^data:image\/(\w+);base64,(.+)$/);
+  const base64Match = image.match(/^data:image\/([^;]+);base64,(.+)$/);
   if (!base64Match) {
     return res.status(400).json({ error: 'Invalid image format' });
   }
 
-  const mediaType = `image/${base64Match[1]}`;
+  let mediaType = `image/${base64Match[1]}`;
   const base64Data = base64Match[2];
+
+  if (mediaType === 'image/jpg') mediaType = 'image/jpeg';
+  if (!ALLOWED_TYPES.includes(mediaType)) {
+    return res.status(400).json({ error: `Unsupported image type: ${mediaType}` });
+  }
 
   try {
     const response = await client.messages.create({
@@ -62,7 +69,7 @@ Rules:
     const parsed = JSON.parse(jsonMatch[0]);
     return res.status(200).json(parsed);
   } catch (err) {
-    console.error('Parse receipt error:', err);
-    return res.status(500).json({ error: 'Failed to process receipt' });
+    console.error('Parse receipt error:', err.message, err.status, JSON.stringify(err.error || {}));
+    return res.status(500).json({ error: `Failed: ${err.message}` });
   }
 }
