@@ -874,14 +874,6 @@ export default function ArcSplit() {
                     const isCreator = address && creator.toLowerCase() === address.toLowerCase();
                     const paidAlready = alreadyPaid || payDone;
 
-                    if (isSettled) return (
-                      <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)" }}>
-                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{lang === "ko" ? "전원 정산 완료" : "Fully Settled"}</div>
-                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{paidCnt}/{memberCnt} {lang === "ko" ? "결제완료" : "paid"}</div>
-                      </div>
-                    );
-
                     if (isCreator) {
                       const claimableUSDC = claimableRaw ? parseFloat(formatUnits(claimableRaw, 6)) : 0;
                       const claimedUSDC = claimedRaw ? parseFloat(formatUnits(claimedRaw, 6)) : 0;
@@ -933,6 +925,14 @@ export default function ArcSplit() {
                         </div>
                       );
                     }
+
+                    if (isSettled) return (
+                      <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)" }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{lang === "ko" ? "전원 정산 완료" : "Fully Settled"}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{paidCnt}/{memberCnt} {lang === "ko" ? "결제완료" : "paid"}</div>
+                      </div>
+                    );
 
                     if (paidAlready) return (
                       <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)", animation: "popIn .4s ease" }}>
