@@ -48,7 +48,7 @@ contract ArcSplitTest is Test {
         assertEq(total, TOTAL);
         assertEq(pp, PER_PERSON);
         assertEq(mc, 3);
-        assertEq(pc, 0);
+        assertEq(pc, 1);
         assertFalse(settled);
     }
 
@@ -96,7 +96,7 @@ contract ArcSplitTest is Test {
         arcSplit.payShare(0, secret);
     }
 
-    function test_creatorCanPay() public {
+    function test_revert_creatorPaySelf() public {
         vm.prank(creator);
         arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
@@ -105,21 +105,13 @@ contract ArcSplitTest is Test {
         usdc.approve(address(arcSplit), type(uint256).max);
 
         vm.prank(creator);
+        vm.expectRevert("Creator already paid");
         arcSplit.payShare(0, secret);
-
-        assertTrue(arcSplit.hasPaid(0, creator));
     }
 
     function test_settleWhenAllPaid() public {
         vm.prank(creator);
         arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
-
-        usdc.mint(creator, 1000e6);
-        vm.prank(creator);
-        usdc.approve(address(arcSplit), type(uint256).max);
-
-        vm.prank(creator);
-        arcSplit.payShare(0, secret);
 
         vm.prank(alice);
         arcSplit.payShare(0, secret);
@@ -150,13 +142,6 @@ contract ArcSplitTest is Test {
         vm.prank(creator);
         arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
-        usdc.mint(creator, 1000e6);
-        vm.prank(creator);
-        usdc.approve(address(arcSplit), type(uint256).max);
-
-        vm.prank(creator);
-        arcSplit.payShare(0, secret);
-
         vm.prank(alice);
         arcSplit.payShare(0, secret);
 
@@ -167,7 +152,7 @@ contract ArcSplitTest is Test {
         vm.prank(creator);
         arcSplit.claim(0);
 
-        assertEq(usdc.balanceOf(creator) - balBefore, 3 * PER_PERSON);
+        assertEq(usdc.balanceOf(creator) - balBefore, 2 * PER_PERSON);
     }
 
     function test_cancelSplit() public {
@@ -188,13 +173,6 @@ contract ArcSplitTest is Test {
     function test_revert_payAfterSettle() public {
         vm.prank(creator);
         arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
-
-        usdc.mint(creator, 1000e6);
-        vm.prank(creator);
-        usdc.approve(address(arcSplit), type(uint256).max);
-
-        vm.prank(creator);
-        arcSplit.payShare(0, secret);
 
         vm.prank(alice);
         arcSplit.payShare(0, secret);

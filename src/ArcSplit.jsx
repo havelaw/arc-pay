@@ -833,7 +833,7 @@ export default function ArcSplit() {
             </button>
 
             {urlSplitData ? (() => {
-              const [creator, splitTitle, totalAmount, perPersonAmt, memberCnt, paidCnt, isSettled] = urlSplitData;
+              const [creator, splitTitle, totalAmount, perPersonAmt, memberCnt, paidCnt, isSettled, , , claimableRaw, claimedRaw] = urlSplitData;
               const totalUSDC = parseFloat(formatUnits(totalAmount, 6));
               const perUSDC = parseFloat(formatUnits(perPersonAmt, 6));
               const totalLocal = Math.round(totalUSDC * rate);
@@ -883,62 +883,50 @@ export default function ArcSplit() {
                     );
 
                     if (isCreator) {
-                      const claimableUSDC = urlSplitData[9] ? parseFloat(formatUnits(urlSplitData[9], 6)) : 0;
-                      const claimedUSDC = urlSplitData[10] ? parseFloat(formatUnits(urlSplitData[10], 6)) : 0;
+                      const claimableUSDC = claimableRaw ? parseFloat(formatUnits(claimableRaw, 6)) : 0;
+                      const claimedUSDC = claimedRaw ? parseFloat(formatUnits(claimedRaw, 6)) : 0;
                       const pendingClaim = claimableUSDC - claimedUSDC;
-                      const creatorPaid = alreadyPaid || payDone;
+                      const totalExpected = (memberCnt - 1) * perUSDC;
                       return (
                         <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.1)" }}>
                           <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
                           <div style={{ fontSize: 16, fontWeight: 700, color: "#6366F1" }}>{lang === "ko" ? "내가 만든 정산" : "Your Split"}</div>
                           <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                            {paidCnt}/{memberCnt} {lang === "ko" ? "결제 완료" : "paid"}
+                            {paidCnt - 1}/{memberCnt - 1} {lang === "ko" ? "명 결제 완료" : "paid"}
                           </div>
 
-                          {!creatorPaid && urlSecret && (
-                            <button onClick={() => handlePay(urlSplitId, perUSDC, urlSecret)} disabled={paying || !contractReady}
-                              style={{
-                                marginTop: 14, padding: "14px 28px", borderRadius: 14, width: "100%",
-                                border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
-                                background: paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                                color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
-                                boxShadow: "0 4px 16px rgba(99,102,241,.3)",
-                              }}>
-                              {paying
-                                ? (lang === "ko" ? "결제 중..." : "Paying...")
-                                : (lang === "ko" ? `내 몫 $${perUSDC.toFixed(2)} 결제` : `Pay my share $${perUSDC.toFixed(2)}`)}
-                            </button>
-                          )}
-                          {creatorPaid && (
-                            <div style={{ marginTop: 10, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
-                              ✅ {lang === "ko" ? "내 몫 결제 완료" : "My share paid"}
+                          <div style={{ marginTop: 16, padding: "16px", borderRadius: 12, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.08)" }}>
+                            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>
+                              {lang === "ko" ? "받을 금액" : "To receive"}
                             </div>
-                          )}
-
-                          <div style={{ marginTop: 16, padding: "12px", borderRadius: 12, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.08)" }}>
-                            <div style={{ fontSize: 13, color: "#6366F1", fontWeight: 700, fontFamily: mono }}>
-                              {lang === "ko" ? "클레임 가능" : "Claimable"}: ${pendingClaim.toFixed(2)} USDC
+                            <div style={{ fontSize: 22, color: "#6366F1", fontWeight: 800, fontFamily: mono }}>
+                              ${pendingClaim.toFixed(2)} USDC
                             </div>
                             <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
-                              {lang === "ko" ? "총 수령" : "Total claimed"}: ${claimedUSDC.toFixed(2)} / ${(memberCnt * perUSDC).toFixed(2)} USDC
+                              {lang === "ko" ? "총" : "Total"}: ${claimedUSDC.toFixed(2)} / ${totalExpected.toFixed(2)} USDC {lang === "ko" ? "수령" : "received"}
                             </div>
                             {pendingClaim > 0 && (
                               <button onClick={() => handleClaim(urlSplitId)} disabled={isClaiming || isClaimConfirming}
                                 style={{
-                                  marginTop: 10, padding: "12px 24px", borderRadius: 12,
+                                  marginTop: 12, padding: "14px 28px", borderRadius: 14, width: "100%",
                                   border: "none", cursor: (isClaiming || isClaimConfirming) ? "wait" : "pointer",
                                   background: (isClaiming || isClaimConfirming) ? "rgba(34,197,94,.4)" : "linear-gradient(135deg, #22c55e, #16a34a)",
-                                  color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: font,
+                                  color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
                                   boxShadow: "0 4px 16px rgba(34,197,94,.3)",
                                 }}>
                                 {isClaiming || isClaimConfirming
                                   ? (lang === "ko" ? "클레임 중..." : "Claiming...")
-                                  : (lang === "ko" ? `$${pendingClaim.toFixed(2)} 클레임` : `Claim $${pendingClaim.toFixed(2)}`)}
+                                  : (lang === "ko" ? `$${pendingClaim.toFixed(2)} 받기` : `Claim $${pendingClaim.toFixed(2)}`)}
                               </button>
+                            )}
+                            {pendingClaim === 0 && !isSettled && (
+                              <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>
+                                {lang === "ko" ? "친구들이 결제하면 여기서 받을 수 있어요" : "Funds appear here as friends pay"}
+                              </div>
                             )}
                             {claimSuccess && (
                               <div style={{ marginTop: 8, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
-                                ✅ {lang === "ko" ? "클레임 완료!" : "Claimed!"}
+                                ✅ {lang === "ko" ? "수령 완료!" : "Claimed!"}
                               </div>
                             )}
                           </div>
