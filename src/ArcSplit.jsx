@@ -380,15 +380,24 @@ export default function ArcSplit() {
                 ))}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {allSplits.filter(s => historyTab === "pending" ? !s.settled : s.settled).length === 0 && (
+                {allSplits.filter(s => {
+                  const hasUnclaimed = s.isMine && (s.claimableUSDC - s.claimedUSDC) > 0;
+                  if (historyTab === "pending") return !s.settled || hasUnclaimed;
+                  return s.settled && !hasUnclaimed;
+                }).length === 0 && (
                   <div style={{ textAlign: "center", padding: "30px 20px", color: "#94a3b8", fontSize: 13 }}>
                     {historyTab === "pending"
                       ? (lang === "ko" ? "미정산 내역이 없어요" : "No pending splits")
                       : (lang === "ko" ? "완료된 정산이 없어요" : "No settled splits")}
                   </div>
                 )}
-                {allSplits.filter(s => historyTab === "pending" ? !s.settled : s.settled).map((s, i) => {
-                  const status = s.settled ? "settled" : "pending";
+                {allSplits.filter(s => {
+                  const hasUnclaimed = s.isMine && (s.claimableUSDC - s.claimedUSDC) > 0;
+                  if (historyTab === "pending") return !s.settled || hasUnclaimed;
+                  return s.settled && !hasUnclaimed;
+                }).map((s, i) => {
+                  const hasUnclaimed = s.isMine && (s.claimableUSDC - s.claimedUSDC) > 0;
+                  const status = s.settled && !hasUnclaimed ? "settled" : hasUnclaimed ? "claimable" : "pending";
                   const pending = s.memberCount - s.paidCount;
                   const localAmt = fromUSDC(s.isMine ? s.perPersonUSDC * (s.memberCount - 1) : s.perPersonUSDC);
                   const timeAgo = (() => {
@@ -442,9 +451,11 @@ export default function ArcSplit() {
                           </div>
                           <div style={{
                             fontSize: 10, fontWeight: 600, marginTop: 2,
-                            color: status === "pending" ? "#f97316" : "#22c55e",
+                            color: status === "claimable" ? "#6366F1" : status === "pending" ? "#f97316" : "#22c55e",
                           }}>
-                            {status === "pending" ? t.pendingCount(pending) : t.splitDone}
+                            {status === "claimable"
+                              ? (lang === "ko" ? "클레임 대기" : "Claim ready")
+                              : status === "pending" ? t.pendingCount(pending) : t.splitDone}
                           </div>
                         </div>
                         {s.isMine && !s.settled && (
