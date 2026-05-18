@@ -16,6 +16,9 @@ contract ArcSplit {
         uint8 paidCount;
         bool settled;
         uint256 createdAt;
+        bytes32 secretHash;
+        uint256 claimable;
+        uint256 claimed;
     }
 
     IERC20 public immutable usdc;
@@ -30,7 +33,8 @@ contract ArcSplit {
         string title,
         uint256 totalAmount,
         uint8 memberCount,
-        uint256 perPerson
+        uint256 perPerson,
+        bytes32 secretHash
     );
 
     event SharePaid(
@@ -41,6 +45,14 @@ contract ArcSplit {
 
     event SplitSettled(uint256 indexed splitId);
 
+    event Claimed(
+        uint256 indexed splitId,
+        address indexed creator,
+        uint256 amount
+    );
+
+    event SplitCancelled(uint256 indexed splitId);
+
     constructor(address _usdc) {
         usdc = IERC20(_usdc);
     }
@@ -48,26 +60,30 @@ contract ArcSplit {
     function createSplit(
         string calldata _title,
         uint256 _totalAmount,
-        uint8 _memberCount
+        uint8 _memberCount,
+        bytes32 _secretHash
     ) external returns (uint256) {
         require(_memberCount >= 2, "Need at least 2 people");
         require(_totalAmount > 0, "Amount must be > 0");
+        require(_secretHash != bytes32(0), "Secret required");
 
         uint256 perPerson = _totalAmount / _memberCount;
         require(perPerson > 0, "Per person amount too small");
 
         uint256 splitId = splitCount++;
 
-        splits[splitId] = Split({
-            creator: msg.sender,
-            title: _title,
-            totalAmount: _totalAmount,
-            perPerson: perPerson,
-            memberCount: _memberCount,
-            paidCount: 1,
-            settled: _memberCount == 1,
-            createdAt: block.timestamp
-        });
+        Split storage s = splits[splitId];
+        s.creator = msg.sender;
+        s.title = _title;
+        s.totalAmount = _totalAmount;
+        s.perPerson = perPerson;
+        s.memberCount = _memberCount;
+        s.paidCount = 1;
+        s.settled = false;
+        s.createdAt = block.timestamp;
+        s.secretHash = _secretHash;
+        s.claimable = 0;
+        s.claimed = 0;
 
         emit SplitCreated(
             splitId,
@@ -75,23 +91,26 @@ contract ArcSplit {
             _title,
             _totalAmount,
             _memberCount,
-            perPerson
+            perPerson,
+            _secretHash
         );
 
         return splitId;
     }
 
-    function payShare(uint256 _splitId) external {
+    function payShare(uint256 _splitId, bytes32 _secret) external {
         Split storage s = splits[_splitId];
         require(s.creator != address(0), "Split does not exist");
         require(!s.settled, "Already settled");
         require(!hasPaid[_splitId][msg.sender], "Already paid");
         require(msg.sender != s.creator, "Creator cannot pay self");
+        require(keccak256(abi.encodePacked(_secret)) == s.secretHash, "Invalid secret");
 
         hasPaid[_splitId][msg.sender] = true;
         s.paidCount++;
+        s.claimable += s.perPerson;
 
-        usdc.safeTransferFrom(msg.sender, s.creator, s.perPerson);
+        usdc.safeTransferFrom(msg.sender, address(this), s.perPerson);
 
         emit SharePaid(_splitId, msg.sender, s.perPerson);
 
@@ -99,6 +118,33 @@ contract ArcSplit {
             s.settled = true;
             emit SplitSettled(_splitId);
         }
+    }
+
+    function claim(uint256 _splitId) external {
+        Split storage s = splits[_splitId];
+        require(msg.sender == s.creator, "Only creator can claim");
+        uint256 amount = s.claimable - s.claimed;
+        require(amount > 0, "Nothing to claim");
+
+        s.claimed += amount;
+        usdc.safeTransfer(s.creator, amount);
+
+        emit Claimed(_splitId, s.creator, amount);
+    }
+
+    function cancelSplit(uint256 _splitId) external {
+        Split storage s = splits[_splitId];
+        require(msg.sender == s.creator, "Only creator can cancel");
+        require(!s.settled, "Already settled");
+
+        uint256 unclaimed = s.claimable - s.claimed;
+        if (unclaimed > 0) {
+            s.claimed += unclaimed;
+            usdc.safeTransfer(s.creator, unclaimed);
+        }
+
+        s.settled = true;
+        emit SplitCancelled(_splitId);
     }
 
     function getSplit(uint256 _splitId)
@@ -112,7 +158,10 @@ contract ArcSplit {
             uint8 memberCount,
             uint8 paidCount,
             bool settled,
-            uint256 createdAt
+            uint256 createdAt,
+            bytes32 secretHash,
+            uint256 claimable,
+            uint256 claimed
         )
     {
         Split storage s = splits[_splitId];
@@ -124,7 +173,10 @@ contract ArcSplit {
             s.memberCount,
             s.paidCount,
             s.settled,
-            s.createdAt
+            s.createdAt,
+            s.secretHash,
+            s.claimable,
+            s.claimed
         );
     }
 }

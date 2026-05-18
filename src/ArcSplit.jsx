@@ -4,7 +4,7 @@ import { formatUnits } from "viem";
 import { detectLanguage, getTranslations } from "./i18n";
 import { walletOptions } from "./wagmi";
 import { useExchangeRate } from "./useExchangeRate";
-import { useUSDCBalance, useCreateSplit, usePayShare, useGetSplit, useSplitCount, useAllSplits, isContractDeployed } from "./contracts";
+import { useUSDCBalance, useCreateSplit, useApproveUSDC, usePayShare, useClaim, useCancelSplit, useGetSplit, useHasPaid, useSplitCount, useAllSplits, isContractDeployed, generateSecret, hashSecret } from "./contracts";
 
 const fmt = (n, lang) => lang === "ko" ? n.toLocaleString("ko-KR") : n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 
@@ -46,13 +46,16 @@ export default function ArcSplit() {
   const contractReady = isConnected && !isWrongChain && isContractDeployed();
 
   const { createSplit: createSplitOnChain, isPending: isCreating, isConfirming: isCreateConfirming, isSuccess: createSuccess, hash: createHash, error: createError } = useCreateSplit();
-  const { payShare: payShareOnChain, approveAndPay, isPending: isPaying, isConfirming: isPayConfirming, isSuccess: paySuccess, hash: payHash, error: payError } = usePayShare();
+  const { approve: approveUSDC, isPending: isApproving, isConfirming: isApproveConfirming, isSuccess: approveSuccess, error: approveError } = useApproveUSDC();
+  const { payShare: payShareOnChain, isPending: isPaying, isConfirming: isPayConfirming, isSuccess: paySuccess, hash: payHash, error: payError } = usePayShare();
+  const { claim: claimOnChain, isPending: isClaiming, isConfirming: isClaimConfirming, isSuccess: claimSuccess, hash: claimHash, error: claimError } = useClaim();
+  const { cancelSplit: cancelSplitOnChain, isPending: isCancelling, isSuccess: cancelSuccess } = useCancelSplit();
   const { data: splitCount } = useSplitCount();
   const { splits: allSplits, refetch: refetchSplits } = useAllSplits(address);
 
   const toReceiveUSDC = allSplits
     .filter(s => s.isMine && !s.settled)
-    .reduce((sum, s) => sum + s.perPersonUSDC * (s.memberCount - 1 - s.paidCount), 0);
+    .reduce((sum, s) => sum + s.perPersonUSDC * (s.memberCount - s.paidCount), 0);
   const toSendUSDC = allSplits
     .filter(s => !s.isMine && !s.settled)
     .reduce((sum, s) => sum + s.perPersonUSDC, 0);
@@ -67,6 +70,14 @@ export default function ArcSplit() {
   useEffect(() => {
     if (paySuccess) refetchSplits();
   }, [paySuccess]);
+
+  useEffect(() => {
+    if (claimSuccess) { refetchSplits(); refetchSplitData(); }
+  }, [claimSuccess]);
+
+  useEffect(() => {
+    if (cancelSuccess) { refetchSplits(); }
+  }, [cancelSuccess]);
 
   const [showWalletModal, setShowWalletModal] = useState(false);
 
@@ -83,15 +94,24 @@ export default function ArcSplit() {
   const [payDone, setPayDone] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [createdSplitId, setCreatedSplitId] = useState(null);
+  const [createdSecret, setCreatedSecret] = useState(null);
   const [urlSplitId, setUrlSplitId] = useState(null);
+  const [urlSecret, setUrlSecret] = useState(null);
+  const [pendingPaySecret, setPendingPaySecret] = useState(null);
+  const [pendingPaySplitId, setPendingPaySplitId] = useState(null);
+  const [approveComplete, setApproveComplete] = useState(false);
+  const [historyTab, setHistoryTab] = useState("pending");
 
-  const { data: urlSplitData } = useGetSplit(urlSplitId);
+  const { data: urlSplitData, refetch: refetchSplitData } = useGetSplit(urlSplitId);
+  const { data: alreadyPaid, refetch: refetchHasPaid } = useHasPaid(urlSplitId, address);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const splitParam = params.get("split");
-    if (splitParam !== null) {
+    const keyParam = params.get("key");
+    if (splitParam !== null && keyParam) {
       setUrlSplitId(Number(splitParam));
+      setUrlSecret(keyParam);
       setScreen("pay-link");
     }
   }, []);
@@ -123,7 +143,10 @@ export default function ArcSplit() {
   const handleCreate = () => {
     if (contractReady) {
       const usdcAmount = toUSDC(parseFloat(amount));
-      createSplitOnChain(title, usdcAmount, memberCount);
+      const secret = generateSecret();
+      const sHash = hashSecret(secret);
+      setCreatedSecret(secret);
+      createSplitOnChain(title, usdcAmount, memberCount, sHash);
     }
     setSettling(true);
     setSettleStep(0);
@@ -147,13 +170,31 @@ export default function ArcSplit() {
     }
   }, [settling, createError]);
 
-  const handlePay = (splitId, usdcAmount) => {
+  const handlePay = (splitId, usdcAmount, secret) => {
     if (contractReady && splitId !== undefined) {
-      approveAndPay(splitId, usdcAmount);
+      approveUSDC(usdcAmount);
     }
     setPaying(true);
     setPayStep(0);
+    setPendingPaySecret(secret);
+    setPendingPaySplitId(splitId);
   };
+
+  const handleClaim = (splitId) => {
+    if (contractReady && splitId !== undefined) {
+      claimOnChain(splitId);
+    }
+  };
+
+  useEffect(() => {
+    if (paying && approveSuccess && !approveComplete) {
+      setApproveComplete(true);
+      setPayStep(1);
+      if (pendingPaySplitId !== null && pendingPaySecret) {
+        payShareOnChain(pendingPaySplitId, pendingPaySecret);
+      }
+    }
+  }, [paying, approveSuccess, approveComplete, pendingPaySplitId, pendingPaySecret]);
 
   useEffect(() => {
     if (paying && payHash) setPayStep(1);
@@ -162,19 +203,20 @@ export default function ArcSplit() {
   useEffect(() => {
     if (paying && paySuccess) {
       setPayStep(2);
-      setTimeout(() => { setPaying(false); setPayDone(true); }, 600);
+      setTimeout(() => { setPaying(false); setPayDone(true); setApproveComplete(false); }, 600);
     }
   }, [paying, paySuccess]);
 
   useEffect(() => {
-    if (paying && payError) {
+    if (paying && (payError || approveError)) {
       setPaying(false);
       setPayStep(0);
+      setApproveComplete(false);
     }
-  }, [paying, payError]);
+  }, [paying, payError, approveError]);
 
-  const shareUrl = createdSplitId !== null
-    ? `${window.location.origin}${window.location.pathname}?split=${createdSplitId}`
+  const shareUrl = createdSplitId !== null && createdSecret
+    ? `${window.location.origin}${window.location.pathname}?split=${createdSplitId}&key=${createdSecret}`
     : `${window.location.origin}${window.location.pathname}`;
 
   const handleCopyLink = () => {
@@ -323,16 +365,31 @@ export default function ArcSplit() {
             </button>
 
             <div style={{ marginTop: 28 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", letterSpacing: ".04em", marginBottom: 14 }}>{t.recentSplits}</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 14 }}>
+                {[
+                  { key: "pending", label: lang === "ko" ? "미정산" : "Pending" },
+                  { key: "settled", label: lang === "ko" ? "완료" : "Settled" },
+                ].map(tab => (
+                  <button key={tab.key} onClick={() => setHistoryTab(tab.key)} style={{
+                    flex: 1, padding: "10px 0", border: "none", cursor: "pointer",
+                    background: historyTab === tab.key ? "rgba(99,102,241,.08)" : "transparent",
+                    borderBottom: historyTab === tab.key ? "2px solid #6366F1" : "2px solid transparent",
+                    color: historyTab === tab.key ? "#6366F1" : "#94a3b8",
+                    fontSize: 13, fontWeight: 700, fontFamily: font, transition: "all .2s",
+                  }}>{tab.label}</button>
+                ))}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {allSplits.length === 0 && (
+                {allSplits.filter(s => historyTab === "pending" ? !s.settled : s.settled).length === 0 && (
                   <div style={{ textAlign: "center", padding: "30px 20px", color: "#94a3b8", fontSize: 13 }}>
-                    {lang === "ko" ? "아직 정산 내역이 없어요" : "No splits yet"}
+                    {historyTab === "pending"
+                      ? (lang === "ko" ? "미정산 내역이 없어요" : "No pending splits")
+                      : (lang === "ko" ? "완료된 정산이 없어요" : "No settled splits")}
                   </div>
                 )}
-                {allSplits.map((s, i) => {
-                  const status = s.settled ? "settled" : s.paidCount < s.memberCount - 1 ? "pending" : "settled";
-                  const pending = s.memberCount - 1 - s.paidCount;
+                {allSplits.filter(s => historyTab === "pending" ? !s.settled : s.settled).map((s, i) => {
+                  const status = s.settled ? "settled" : "pending";
+                  const pending = s.memberCount - s.paidCount;
                   const localAmt = fromUSDC(s.isMine ? s.perPersonUSDC * (s.memberCount - 1) : s.perPersonUSDC);
                   const timeAgo = (() => {
                     const diff = Math.floor(Date.now() / 1000) - s.createdAt;
@@ -344,8 +401,9 @@ export default function ArcSplit() {
                   return (
                     <div key={s.id}
                       onClick={() => {
-                        window.history.replaceState({}, "", `?split=${s.id}`);
+                        window.history.replaceState({}, "", `?split=${s.id}&key=view`);
                         setUrlSplitId(s.id);
+                        setUrlSecret(null);
                         setPayDone(false);
                         setPaying(false);
                         setScreen("pay-link");
@@ -377,16 +435,33 @@ export default function ArcSplit() {
                           </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
-                          {fmtCurrency(localAmt)}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
+                            {fmtCurrency(localAmt)}
+                          </div>
+                          <div style={{
+                            fontSize: 10, fontWeight: 600, marginTop: 2,
+                            color: status === "pending" ? "#f97316" : "#22c55e",
+                          }}>
+                            {status === "pending" ? t.pendingCount(pending) : t.splitDone}
+                          </div>
                         </div>
-                        <div style={{
-                          fontSize: 10, fontWeight: 600, marginTop: 2,
-                          color: status === "pending" ? "#f97316" : "#22c55e",
-                        }}>
-                          {status === "pending" ? t.pendingCount(pending) : t.splitDone}
-                        </div>
+                        {s.isMine && !s.settled && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); cancelSplitOnChain(s.id); }}
+                            disabled={isCancelling}
+                            style={{
+                              width: 28, height: 28, borderRadius: 8, border: "none",
+                              background: "rgba(239,68,68,.08)", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 12, color: "#ef4444", transition: "all .2s",
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,.15)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,.08)"}
+                            title={lang === "ko" ? "정산 취소" : "Cancel split"}
+                          >✕</button>
+                        )}
                       </div>
                     </div>
                   );
@@ -414,6 +489,24 @@ export default function ArcSplit() {
                 background: "rgba(34,197,94,.08)", fontSize: 10, fontWeight: 600, color: "#22c55e",
               }}>LIVE</div>
             </div>
+
+            <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer" style={{
+              marginTop: 10, padding: "14px 18px", borderRadius: 14, textDecoration: "none",
+              background: "linear-gradient(135deg, rgba(251,146,60,.06), rgba(249,115,22,.04))",
+              border: "1px solid rgba(249,115,22,.12)",
+              display: "flex", alignItems: "center", gap: 12, transition: "all .2s",
+            }}>
+              <div style={{ fontSize: 20 }}>🚰</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#f97316" }}>
+                  {lang === "ko" ? "테스트넷 USDC 받기" : "Get Testnet USDC"}
+                </div>
+                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                  {lang === "ko" ? "Circle Faucet에서 무료 테스트 토큰을 받으세요" : "Get free test tokens from Circle Faucet"}
+                </div>
+              </div>
+              <span style={{ fontSize: 14, color: "#f97316" }}>↗</span>
+            </a>
 
             <div style={{
               marginTop: 10, padding: "16px 20px", borderRadius: 16,
@@ -746,54 +839,118 @@ export default function ArcSplit() {
                     </div>
                   </div>
 
-                  {isSettled ? (
-                    <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)" }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{lang === "ko" ? "정산 완료" : "Fully Settled"}</div>
-                    </div>
-                  ) : !payDone ? (
-                    <button onClick={() => handlePay(urlSplitId, perUSDC)} disabled={paying || !contractReady}
-                      style={{
-                        width: "100%", padding: "18px", borderRadius: 18,
-                        border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
-                        background: !contractReady ? "rgba(0,0,0,.06)" : paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                        color: !contractReady ? "#94a3b8" : "#fff",
-                        fontSize: 16, fontWeight: 700, fontFamily: font,
-                        boxShadow: (contractReady && !paying) ? "0 6px 24px rgba(99,102,241,.3)" : "none",
-                        transition: "all .3s",
-                      }}>
-                      {!isConnected ? t.connectWallet : isWrongChain ? (lang === "ko" ? "네트워크 전환 필요" : "Switch to Arc") : paying ? (
-                        <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
-                          {[t.approving, t.sending, t.done].map((s, i) => (
-                            <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
-                              {payStep > i ? "✓ " : ""}{s}
-                            </span>
-                          ))}
+                  {(() => {
+                    const isCreator = address && creator.toLowerCase() === address.toLowerCase();
+                    const paidAlready = alreadyPaid || payDone;
+
+                    if (isSettled) return (
+                      <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)" }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{lang === "ko" ? "전원 정산 완료" : "Fully Settled"}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{paidCnt}/{memberCnt} {lang === "ko" ? "결제완료" : "paid"}</div>
+                      </div>
+                    );
+
+                    if (isCreator) {
+                      const claimableUSDC = urlSplitData[9] ? parseFloat(formatUnits(urlSplitData[9], 6)) : 0;
+                      const claimedUSDC = urlSplitData[10] ? parseFloat(formatUnits(urlSplitData[10], 6)) : 0;
+                      const pendingClaim = claimableUSDC - claimedUSDC;
+                      return (
+                        <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.1)" }}>
+                          <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: "#6366F1" }}>{lang === "ko" ? "내가 만든 정산" : "Your Split"}</div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                            {lang === "ko"
+                              ? `${paidCnt - 1}/${memberCnt - 1}명 결제 완료`
+                              : `${paidCnt - 1}/${memberCnt - 1} paid`}
+                          </div>
+                          <div style={{ fontSize: 13, color: "#6366F1", fontWeight: 700, fontFamily: mono, marginTop: 8 }}>
+                            {lang === "ko" ? "클레임 가능" : "Claimable"}: ${pendingClaim.toFixed(2)} USDC
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
+                            {lang === "ko" ? "총 수령" : "Total claimed"}: ${claimedUSDC.toFixed(2)} / ${((memberCnt - 1) * perUSDC).toFixed(2)} USDC
+                          </div>
+                          {pendingClaim > 0 && (
+                            <button onClick={() => handleClaim(urlSplitId)} disabled={isClaiming || isClaimConfirming}
+                              style={{
+                                marginTop: 14, padding: "14px 28px", borderRadius: 14,
+                                border: "none", cursor: (isClaiming || isClaimConfirming) ? "wait" : "pointer",
+                                background: (isClaiming || isClaimConfirming) ? "rgba(34,197,94,.4)" : "linear-gradient(135deg, #22c55e, #16a34a)",
+                                color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
+                                boxShadow: "0 4px 16px rgba(34,197,94,.3)",
+                              }}>
+                              {isClaiming || isClaimConfirming
+                                ? (lang === "ko" ? "클레임 중..." : "Claiming...")
+                                : (lang === "ko" ? `$${pendingClaim.toFixed(2)} 클레임` : `Claim $${pendingClaim.toFixed(2)}`)}
+                            </button>
+                          )}
+                          {claimSuccess && (
+                            <div style={{ marginTop: 10, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
+                              ✅ {lang === "ko" ? "클레임 완료!" : "Claimed!"}
+                            </div>
+                          )}
                         </div>
-                      ) : t.sendUSDC(perUSDC.toFixed(2))}
-                    </button>
-                  ) : (
-                    <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)", animation: "popIn .4s ease" }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{t.payComplete}</div>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.payTime("0.31")}</div>
-                      <div style={{ marginTop: 12, padding: "10px", borderRadius: 10, background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11, color: "#94a3b8", textAlign: "left" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span>Tx</span>
-                          {payHash ? (
-                            <a href={`https://testnet.arcscan.app/tx/${payHash}`} target="_blank" rel="noopener noreferrer"
-                              style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
-                              onMouseEnter={e => e.target.style.textDecoration = "underline"}
-                              onMouseLeave={e => e.target.style.textDecoration = "none"}
-                            >{payHash.slice(0,6)}...{payHash.slice(-4)} ↗</a>
-                          ) : <span style={{ color: "#6366F1" }}>—</span>}
+                      );
+                    }
+
+                    if (paidAlready) return (
+                      <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.1)", animation: "popIn .4s ease" }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e" }}>{t.payComplete}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                          {lang === "ko" ? `$${perUSDC.toFixed(2)} USDC 전송 완료` : `$${perUSDC.toFixed(2)} USDC sent`}
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span>Gas</span><span style={{ color: "#22c55e" }}>~$0.001 USDC</span>
+                        {payHash && (
+                          <div style={{ marginTop: 12, padding: "10px", borderRadius: 10, background: "rgba(0,0,0,.02)", fontFamily: mono, fontSize: 11, color: "#94a3b8", textAlign: "left" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                              <span>Tx</span>
+                              <a href={`https://testnet.arcscan.app/tx/${payHash}`} target="_blank" rel="noopener noreferrer"
+                                style={{ color: "#6366F1", fontWeight: 600, textDecoration: "none" }}
+                                onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                                onMouseLeave={e => e.target.style.textDecoration = "none"}
+                              >{payHash.slice(0,6)}...{payHash.slice(-4)} ↗</a>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span>Gas</span><span style={{ color: "#22c55e" }}>~$0.001 USDC</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+
+                    if (!urlSecret) return (
+                      <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(249,115,22,.04)", border: "1px solid rgba(249,115,22,.1)" }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#f97316" }}>{lang === "ko" ? "접근 권한 없음" : "Access Denied"}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                          {lang === "ko" ? "유효한 정산 링크가 필요합니다" : "A valid payment link is required"}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+
+                    return (
+                      <button onClick={() => handlePay(urlSplitId, perUSDC, urlSecret)} disabled={paying || !contractReady}
+                        style={{
+                          width: "100%", padding: "18px", borderRadius: 18,
+                          border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
+                          background: !contractReady ? "rgba(0,0,0,.06)" : paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                          color: !contractReady ? "#94a3b8" : "#fff",
+                          fontSize: 16, fontWeight: 700, fontFamily: font,
+                          boxShadow: (contractReady && !paying) ? "0 6px 24px rgba(99,102,241,.3)" : "none",
+                          transition: "all .3s",
+                        }}>
+                        {!isConnected ? t.connectWallet : isWrongChain ? (lang === "ko" ? "네트워크 전환 필요" : "Switch to Arc") : paying ? (
+                          <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
+                            {[t.approving, t.sending, t.done].map((s, i) => (
+                              <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
+                                {payStep > i ? "✓ " : ""}{s}
+                              </span>
+                            ))}
+                          </div>
+                        ) : t.sendUSDC(perUSDC.toFixed(2))}
+                      </button>
+                    );
+                  })()}
                 </div>
               );
             })() : (

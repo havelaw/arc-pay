@@ -1,4 +1,4 @@
-import { parseUnits, formatUnits } from 'viem'
+import { parseUnits, formatUnits, keccak256, toBytes, toHex } from 'viem'
 import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { useMemo } from 'react'
 import arcSplitAbi from './abi/ArcSplit.json'
@@ -35,6 +35,15 @@ export function isContractDeployed() {
   return !!ARCSPLIT_ADDRESS
 }
 
+export function generateSecret() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return toHex(bytes)
+}
+
+export function hashSecret(secret) {
+  return keccak256(toBytes(secret))
+}
+
 export function useUSDCBalance(address) {
   return useReadContract({
     address: USDC_ADDRESS,
@@ -49,26 +58,25 @@ export function useCreateSplit() {
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const createSplit = (title, totalAmountUSDC, memberCount) => {
+  const createSplit = (title, totalAmountUSDC, memberCount, secretHash) => {
     const amount = parseUnits(String(totalAmountUSDC), USDC_DECIMALS)
     writeContract({
       address: ARCSPLIT_ADDRESS,
       abi: arcSplitAbi,
       functionName: 'createSplit',
-      args: [title, amount, memberCount],
+      args: [title, amount, memberCount, secretHash],
     })
   }
 
   return { createSplit, hash, isPending, isConfirming, isSuccess, error }
 }
 
-export function usePayShare() {
+export function useApproveUSDC() {
   const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const approveAndPay = async (splitId, amountUSDC) => {
+  const approve = (amountUSDC) => {
     const amount = parseUnits(String(amountUSDC), USDC_DECIMALS)
-    // Step 1: Approve
     writeContract({
       address: USDC_ADDRESS,
       abi: ERC20_ABI,
@@ -77,16 +85,55 @@ export function usePayShare() {
     })
   }
 
-  const payShare = (splitId) => {
+  return { approve, hash, isPending, isConfirming, isSuccess, error }
+}
+
+export function usePayShare() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const payShare = (splitId, secret) => {
     writeContract({
       address: ARCSPLIT_ADDRESS,
       abi: arcSplitAbi,
       functionName: 'payShare',
+      args: [BigInt(splitId), secret],
+    })
+  }
+
+  return { payShare, hash, isPending, isConfirming, isSuccess, error }
+}
+
+export function useClaim() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const claim = (splitId) => {
+    writeContract({
+      address: ARCSPLIT_ADDRESS,
+      abi: arcSplitAbi,
+      functionName: 'claim',
       args: [BigInt(splitId)],
     })
   }
 
-  return { approveAndPay, payShare, hash, isPending, isConfirming, isSuccess, error }
+  return { claim, hash, isPending, isConfirming, isSuccess, error }
+}
+
+export function useCancelSplit() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const cancelSplit = (splitId) => {
+    writeContract({
+      address: ARCSPLIT_ADDRESS,
+      abi: arcSplitAbi,
+      functionName: 'cancelSplit',
+      args: [BigInt(splitId)],
+    })
+  }
+
+  return { cancelSplit, hash, isPending, isConfirming, isSuccess, error }
 }
 
 export function useGetSplit(splitId) {
@@ -96,6 +143,19 @@ export function useGetSplit(splitId) {
     functionName: 'getSplit',
     args: splitId !== undefined && splitId !== null ? [BigInt(splitId)] : undefined,
     query: { enabled: splitId !== undefined && splitId !== null && isContractDeployed() },
+  })
+}
+
+export function useHasPaid(splitId, userAddress) {
+  return useReadContract({
+    address: ARCSPLIT_ADDRESS,
+    abi: arcSplitAbi,
+    functionName: 'hasPaid',
+    args: splitId !== undefined && splitId !== null && userAddress
+      ? [BigInt(splitId), userAddress] : undefined,
+    query: {
+      enabled: splitId !== undefined && splitId !== null && !!userAddress && isContractDeployed(),
+    },
   })
 }
 
@@ -132,7 +192,7 @@ export function useAllSplits(userAddress) {
     return results
       .map((r, i) => {
         if (r.status !== 'success') return null
-        const [creator, title, totalAmount, perPerson, memberCount, paidCount, settled, createdAt] = r.result
+        const [creator, title, totalAmount, perPerson, memberCount, paidCount, settled, createdAt, secretHash, claimable, claimed] = r.result
         return {
           id: i,
           creator,
@@ -144,6 +204,8 @@ export function useAllSplits(userAddress) {
           settled,
           createdAt: Number(createdAt),
           isMine: userAddress && creator.toLowerCase() === userAddress.toLowerCase(),
+          claimableUSDC: parseFloat(formatUnits(claimable, USDC_DECIMALS)),
+          claimedUSDC: parseFloat(formatUnits(claimed, USDC_DECIMALS)),
         }
       })
       .filter(Boolean)

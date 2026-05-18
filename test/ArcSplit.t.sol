@@ -16,9 +16,13 @@ contract ArcSplitTest is Test {
     uint256 constant TOTAL = 30e6; // 30 USDC
     uint256 constant PER_PERSON = 10e6; // 10 USDC
 
+    bytes32 secret = bytes32("testsecret123");
+    bytes32 secretHash;
+
     function setUp() public {
         usdc = new MockUSDC();
         arcSplit = new ArcSplit(address(usdc));
+        secretHash = keccak256(abi.encodePacked(secret));
 
         usdc.mint(alice, 1000e6);
         usdc.mint(bob, 1000e6);
@@ -32,11 +36,11 @@ contract ArcSplitTest is Test {
 
     function test_createSplit() public {
         vm.prank(creator);
-        uint256 splitId = arcSplit.createSplit("Dinner", TOTAL, 3);
+        uint256 splitId = arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         (
             address c, string memory title, uint256 total,
-            uint256 pp, uint8 mc, uint8 pc, bool settled,
+            uint256 pp, uint8 mc, uint8 pc, bool settled,,,,
         ) = arcSplit.getSplit(splitId);
 
         assertEq(c, creator);
@@ -51,73 +55,126 @@ contract ArcSplitTest is Test {
     function test_revert_lessThan2Members() public {
         vm.prank(creator);
         vm.expectRevert("Need at least 2 people");
-        arcSplit.createSplit("Solo", TOTAL, 1);
+        arcSplit.createSplit("Solo", TOTAL, 1, secretHash);
     }
 
     function test_revert_zeroAmount() public {
         vm.prank(creator);
         vm.expectRevert("Amount must be > 0");
-        arcSplit.createSplit("Free", 0, 2);
+        arcSplit.createSplit("Free", 0, 2, secretHash);
     }
 
     function test_payShare() public {
         vm.prank(creator);
-        arcSplit.createSplit("Dinner", TOTAL, 3);
-
-        uint256 balBefore = usdc.balanceOf(creator);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         vm.prank(alice);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
 
-        assertEq(usdc.balanceOf(creator) - balBefore, PER_PERSON);
+        assertEq(usdc.balanceOf(address(arcSplit)), PER_PERSON);
         assertTrue(arcSplit.hasPaid(0, alice));
+    }
+
+    function test_revert_invalidSecret() public {
+        vm.prank(creator);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
+
+        vm.prank(alice);
+        vm.expectRevert("Invalid secret");
+        arcSplit.payShare(0, bytes32("wrongsecret"));
     }
 
     function test_revert_doublePay() public {
         vm.prank(creator);
-        arcSplit.createSplit("Dinner", TOTAL, 3);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         vm.prank(alice);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
 
         vm.prank(alice);
         vm.expectRevert("Already paid");
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
     }
 
     function test_revert_creatorPaySelf() public {
         vm.prank(creator);
-        arcSplit.createSplit("Dinner", TOTAL, 3);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         vm.prank(creator);
         vm.expectRevert("Creator cannot pay self");
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
     }
 
     function test_settleWhenAllPaid() public {
         vm.prank(creator);
-        arcSplit.createSplit("Dinner", TOTAL, 3);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         vm.prank(alice);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
 
         vm.prank(bob);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
 
-        (,,,,, uint8 pc, bool settled,) = arcSplit.getSplit(0);
+        (,,,,, uint8 pc, bool settled,,,,) = arcSplit.getSplit(0);
         assertEq(pc, 3);
         assertTrue(settled);
     }
 
-    function test_revert_payAfterSettle() public {
+    function test_claim() public {
         vm.prank(creator);
-        arcSplit.createSplit("Dinner", TOTAL, 3);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
 
         vm.prank(alice);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
+
+        uint256 balBefore = usdc.balanceOf(creator);
+        vm.prank(creator);
+        arcSplit.claim(0);
+
+        assertEq(usdc.balanceOf(creator) - balBefore, PER_PERSON);
+    }
+
+    function test_claimAfterFullSettle() public {
+        vm.prank(creator);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
+
+        vm.prank(alice);
+        arcSplit.payShare(0, secret);
 
         vm.prank(bob);
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
+
+        uint256 balBefore = usdc.balanceOf(creator);
+        vm.prank(creator);
+        arcSplit.claim(0);
+
+        assertEq(usdc.balanceOf(creator) - balBefore, 2 * PER_PERSON);
+    }
+
+    function test_cancelSplit() public {
+        vm.prank(creator);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
+
+        vm.prank(alice);
+        arcSplit.payShare(0, secret);
+
+        vm.prank(creator);
+        arcSplit.cancelSplit(0);
+
+        (,,,,,, bool settled,,,,) = arcSplit.getSplit(0);
+        assertTrue(settled);
+        assertEq(usdc.balanceOf(creator), PER_PERSON);
+    }
+
+    function test_revert_payAfterSettle() public {
+        vm.prank(creator);
+        arcSplit.createSplit("Dinner", TOTAL, 3, secretHash);
+
+        vm.prank(alice);
+        arcSplit.payShare(0, secret);
+
+        vm.prank(bob);
+        arcSplit.payShare(0, secret);
 
         address charlie = address(0x4);
         usdc.mint(charlie, 100e6);
@@ -126,6 +183,6 @@ contract ArcSplitTest is Test {
 
         vm.prank(charlie);
         vm.expectRevert("Already settled");
-        arcSplit.payShare(0);
+        arcSplit.payShare(0, secret);
     }
 }

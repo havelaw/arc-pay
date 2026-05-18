@@ -29,3 +29,5 @@ artifacts
 *.njsproj
 *.sln
 *.sw?
+
+.vercel

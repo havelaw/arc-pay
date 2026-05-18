@@ -33,6 +33,31 @@
       {
         "indexed": true,
         "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "Claimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "splitId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
         "name": "payer",
         "type": "address"
       },
@@ -84,6 +109,12 @@
         "internalType": "uint256",
         "name": "perPerson",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "secretHash",
+        "type": "bytes32"
       }
     ],
     "name": "SplitCreated",
@@ -103,6 +134,45 @@
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "splitId",
+        "type": "uint256"
+      }
+    ],
+    "name": "SplitCancelled",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_splitId",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelSplit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_splitId",
+        "type": "uint256"
+      }
+    ],
+    "name": "claim",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "string",
@@ -118,6 +188,11 @@
         "internalType": "uint8",
         "name": "_memberCount",
         "type": "uint8"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_secretHash",
+        "type": "bytes32"
       }
     ],
     "name": "createSplit",
@@ -180,6 +255,21 @@
         "internalType": "uint256",
         "name": "createdAt",
         "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "secretHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimable",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimed",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -215,6 +305,11 @@
         "internalType": "uint256",
         "name": "_splitId",
         "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_secret",
+        "type": "bytes32"
       }
     ],
     "name": "payShare",
@@ -283,6 +378,21 @@
       {
         "internalType": "uint256",
         "name": "createdAt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "secretHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimable",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimed",
         "type": "uint256"
       }
     ],
