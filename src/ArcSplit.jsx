@@ -80,6 +80,10 @@ export default function ArcSplit() {
   }, [cancelSuccess]);
 
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [receiptParsing, setReceiptParsing] = useState(false);
+  const [receiptItems, setReceiptItems] = useState(null);
+  const [receiptError, setReceiptError] = useState(null);
+  const fileInputRef = useRef();
 
   const [screen, setScreen] = useState("home");
   const [amount, setAmount] = useState("");
@@ -184,6 +188,41 @@ export default function ArcSplit() {
     if (contractReady && splitId !== undefined) {
       claimOnChain(splitId);
     }
+  };
+
+  const handleReceiptCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setReceiptParsing(true);
+    setReceiptError(null);
+    setReceiptItems(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await fetch('/api/parse-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: reader.result }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          setReceiptError(data.error);
+        } else {
+          setReceiptItems(data);
+          setTitle(data.title || '');
+          setAmount(String(data.total || ''));
+          setScreen('create');
+        }
+      } catch (err) {
+        setReceiptError(lang === 'ko' ? '영수증 분석에 실패했어요' : 'Failed to analyze receipt');
+      } finally {
+        setReceiptParsing(false);
+        e.target.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   useEffect(() => {
@@ -348,21 +387,53 @@ export default function ArcSplit() {
               ))}
             </div>
 
-            <button onClick={() => { setScreen("create"); setAmount(""); setTitle(""); setMemberCount(4); setSettled(false); }}
-              style={{
-                width: "100%", marginTop: 18, padding: "18px", borderRadius: 18,
-                border: "none", cursor: "pointer",
-                background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: font,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 6px 24px rgba(99,102,241,.3)",
-                transition: "all .2s",
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 32px rgba(99,102,241,.35)"; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 6px 24px rgba(99,102,241,.3)"; }}
-            >
-              <span style={{ fontSize: 20 }}>＋</span> {t.newSplit}
-            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+              onChange={handleReceiptCapture} style={{ display: "none" }} />
+
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button onClick={() => { setScreen("create"); setAmount(""); setTitle(""); setMemberCount(4); setSettled(false); setReceiptItems(null); }}
+                style={{
+                  flex: 1, padding: "18px", borderRadius: 18,
+                  border: "none", cursor: "pointer",
+                  background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                  color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 6px 24px rgba(99,102,241,.3)",
+                  transition: "all .2s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = ""; }}
+              >
+                <span style={{ fontSize: 18 }}>＋</span> {t.newSplit}
+              </button>
+              <button onClick={() => fileInputRef.current?.click()} disabled={receiptParsing}
+                style={{
+                  padding: "18px 20px", borderRadius: 18,
+                  border: "none", cursor: receiptParsing ? "wait" : "pointer",
+                  background: receiptParsing ? "rgba(249,115,22,.4)" : "linear-gradient(135deg, #f97316, #ea580c)",
+                  color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 6px 24px rgba(249,115,22,.3)",
+                  transition: "all .2s",
+                }}
+                onMouseEnter={e => { if (!receiptParsing) e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = ""; }}
+              >
+                {receiptParsing
+                  ? <span style={{ fontSize: 13 }}>{lang === "ko" ? "분석중..." : "Scanning..."}</span>
+                  : <><span style={{ fontSize: 18 }}>📸</span> <span>{lang === "ko" ? "영수증" : "Receipt"}</span></>}
+              </button>
+            </div>
+
+            {receiptError && (
+              <div style={{
+                marginTop: 10, padding: "12px 16px", borderRadius: 12,
+                background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.12)",
+                fontSize: 12, color: "#ef4444", fontWeight: 600,
+              }}>
+                {receiptError}
+              </div>
+            )}
 
             <div style={{ marginTop: 28 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 14 }}>
@@ -562,6 +633,43 @@ export default function ArcSplit() {
 
             <h2 style={{ fontSize: 24, fontWeight: 800, marginTop: 14, letterSpacing: "-.03em" }}>{t.createTitle}</h2>
             <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>{t.createDesc}</p>
+
+            {receiptItems && (
+              <div style={{
+                marginTop: 16, padding: "16px", borderRadius: 16,
+                background: "linear-gradient(135deg, rgba(249,115,22,.04), rgba(251,146,60,.02))",
+                border: "1px solid rgba(249,115,22,.12)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 16 }}>📸</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#f97316" }}>
+                    {lang === "ko" ? "AI 영수증 분석 결과" : "AI Receipt Scan"}
+                  </span>
+                </div>
+                {receiptItems.items?.map((item, i) => (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderBottom: i < receiptItems.items.length - 1 ? "1px solid rgba(0,0,0,.04)" : "none",
+                  }}>
+                    <span style={{ fontSize: 13, color: "#1a1a2e" }}>{item.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: mono, color: "#1a1a2e" }}>
+                      {receiptItems.currency === "KRW" ? "₩" : "$"}{item.price.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+                <div style={{
+                  display: "flex", justifyContent: "space-between", padding: "10px 0 0",
+                  marginTop: 6, borderTop: "1.5px solid rgba(0,0,0,.08)",
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>
+                    {lang === "ko" ? "합계" : "Total"}
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 800, fontFamily: mono, color: "#6366F1" }}>
+                    {receiptItems.currency === "KRW" ? "₩" : "$"}{receiptItems.total?.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: 24 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: ".06em", marginBottom: 8, display: "block" }}>{t.whereLabel}</label>
