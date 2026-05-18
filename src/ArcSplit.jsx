@@ -469,27 +469,20 @@ export default function ArcSplit() {
               </div>
             </div>
 
-            {/* Exchange Rate Badge */}
+            {/* Why ArcSplit */}
             <div style={{
-              marginTop: 24, padding: "14px 18px", borderRadius: 14,
-              background: "rgba(255,255,255,.6)", border: "1px solid rgba(0,0,0,.04)",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
+              marginTop: 24, padding: "16px 20px", borderRadius: 16,
+              background: "rgba(255,255,255,.5)", border: "1px solid rgba(99,102,241,.08)",
+              display: "flex", alignItems: "center", gap: 14,
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontSize: 18 }}>💱</div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
-                    {t.rateLabel(lang === "ko" ? fmt(rate, lang) : rate.toFixed(4))}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{t.rateUpdated}</div>
-                </div>
+              <div style={{ fontSize: 24 }}>⚡</div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#6366F1" }}>{t.whyArcSplit}</div>
+                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5, marginTop: 2 }}>{t.whyArcDesc}</div>
               </div>
-              <div style={{
-                padding: "4px 8px", borderRadius: 6,
-                background: "rgba(34,197,94,.08)", fontSize: 10, fontWeight: 600, color: "#22c55e",
-              }}>LIVE</div>
             </div>
 
+            {/* Testnet Faucet */}
             <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer" style={{
               marginTop: 10, padding: "14px 18px", borderRadius: 14, textDecoration: "none",
               background: "linear-gradient(135deg, rgba(251,146,60,.06), rgba(249,115,22,.04))",
@@ -508,17 +501,44 @@ export default function ArcSplit() {
               <span style={{ fontSize: 14, color: "#f97316" }}>↗</span>
             </a>
 
+            {/* Exchange Rate */}
             <div style={{
-              marginTop: 10, padding: "16px 20px", borderRadius: 16,
-              background: "rgba(255,255,255,.5)", border: "1px solid rgba(99,102,241,.08)",
-              display: "flex", alignItems: "center", gap: 14,
+              marginTop: 10, padding: "14px 18px", borderRadius: 14,
+              background: "rgba(255,255,255,.6)", border: "1px solid rgba(0,0,0,.04)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
             }}>
-              <div style={{ fontSize: 24 }}>⚡</div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#6366F1" }}>{t.whyArcSplit}</div>
-                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5, marginTop: 2 }}>{t.whyArcDesc}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 18 }}>💱</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: "#1a1a2e" }}>
+                    {t.rateLabel(lang === "ko" ? fmt(rate, lang) : rate.toFixed(4))}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{t.rateUpdated}</div>
+                </div>
               </div>
+              <div style={{
+                padding: "4px 8px", borderRadius: 6,
+                background: "rgba(34,197,94,.08)", fontSize: 10, fontWeight: 600, color: "#22c55e",
+              }}>LIVE</div>
             </div>
+
+            {/* Contact */}
+            <a href="https://x.com/havelaw11" target="_blank" rel="noopener noreferrer" style={{
+              marginTop: 10, padding: "14px 18px", borderRadius: 14, textDecoration: "none",
+              background: "rgba(255,255,255,.5)", border: "1px solid rgba(0,0,0,.04)",
+              display: "flex", alignItems: "center", gap: 12, transition: "all .2s",
+            }}>
+              <div style={{ fontSize: 20 }}>💬</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a2e" }}>
+                  {lang === "ko" ? "문의하기" : "Contact Us"}
+                </div>
+                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                  {lang === "ko" ? "피드백, 버그 리포트, 제안 환영합니다" : "Feedback, bug reports, and suggestions welcome"}
+                </div>
+              </div>
+              <span style={{ fontSize: 14, color: "#94a3b8" }}>↗</span>
+            </a>
           </div>
         )}
 
@@ -855,40 +875,62 @@ export default function ArcSplit() {
                       const claimableUSDC = urlSplitData[9] ? parseFloat(formatUnits(urlSplitData[9], 6)) : 0;
                       const claimedUSDC = urlSplitData[10] ? parseFloat(formatUnits(urlSplitData[10], 6)) : 0;
                       const pendingClaim = claimableUSDC - claimedUSDC;
+                      const creatorPaid = alreadyPaid || payDone;
                       return (
                         <div style={{ textAlign: "center", padding: "20px", borderRadius: 16, background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.1)" }}>
                           <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
                           <div style={{ fontSize: 16, fontWeight: 700, color: "#6366F1" }}>{lang === "ko" ? "내가 만든 정산" : "Your Split"}</div>
                           <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                            {lang === "ko"
-                              ? `${paidCnt - 1}/${memberCnt - 1}명 결제 완료`
-                              : `${paidCnt - 1}/${memberCnt - 1} paid`}
+                            {paidCnt}/{memberCnt} {lang === "ko" ? "결제 완료" : "paid"}
                           </div>
-                          <div style={{ fontSize: 13, color: "#6366F1", fontWeight: 700, fontFamily: mono, marginTop: 8 }}>
-                            {lang === "ko" ? "클레임 가능" : "Claimable"}: ${pendingClaim.toFixed(2)} USDC
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
-                            {lang === "ko" ? "총 수령" : "Total claimed"}: ${claimedUSDC.toFixed(2)} / ${((memberCnt - 1) * perUSDC).toFixed(2)} USDC
-                          </div>
-                          {pendingClaim > 0 && (
-                            <button onClick={() => handleClaim(urlSplitId)} disabled={isClaiming || isClaimConfirming}
+
+                          {!creatorPaid && urlSecret && (
+                            <button onClick={() => handlePay(urlSplitId, perUSDC, urlSecret)} disabled={paying || !contractReady}
                               style={{
-                                marginTop: 14, padding: "14px 28px", borderRadius: 14,
-                                border: "none", cursor: (isClaiming || isClaimConfirming) ? "wait" : "pointer",
-                                background: (isClaiming || isClaimConfirming) ? "rgba(34,197,94,.4)" : "linear-gradient(135deg, #22c55e, #16a34a)",
+                                marginTop: 14, padding: "14px 28px", borderRadius: 14, width: "100%",
+                                border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
+                                background: paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
                                 color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: font,
-                                boxShadow: "0 4px 16px rgba(34,197,94,.3)",
+                                boxShadow: "0 4px 16px rgba(99,102,241,.3)",
                               }}>
-                              {isClaiming || isClaimConfirming
-                                ? (lang === "ko" ? "클레임 중..." : "Claiming...")
-                                : (lang === "ko" ? `$${pendingClaim.toFixed(2)} 클레임` : `Claim $${pendingClaim.toFixed(2)}`)}
+                              {paying
+                                ? (lang === "ko" ? "결제 중..." : "Paying...")
+                                : (lang === "ko" ? `내 몫 $${perUSDC.toFixed(2)} 결제` : `Pay my share $${perUSDC.toFixed(2)}`)}
                             </button>
                           )}
-                          {claimSuccess && (
+                          {creatorPaid && (
                             <div style={{ marginTop: 10, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
-                              ✅ {lang === "ko" ? "클레임 완료!" : "Claimed!"}
+                              ✅ {lang === "ko" ? "내 몫 결제 완료" : "My share paid"}
                             </div>
                           )}
+
+                          <div style={{ marginTop: 16, padding: "12px", borderRadius: 12, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.08)" }}>
+                            <div style={{ fontSize: 13, color: "#6366F1", fontWeight: 700, fontFamily: mono }}>
+                              {lang === "ko" ? "클레임 가능" : "Claimable"}: ${pendingClaim.toFixed(2)} USDC
+                            </div>
+                            <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
+                              {lang === "ko" ? "총 수령" : "Total claimed"}: ${claimedUSDC.toFixed(2)} / ${(memberCnt * perUSDC).toFixed(2)} USDC
+                            </div>
+                            {pendingClaim > 0 && (
+                              <button onClick={() => handleClaim(urlSplitId)} disabled={isClaiming || isClaimConfirming}
+                                style={{
+                                  marginTop: 10, padding: "12px 24px", borderRadius: 12,
+                                  border: "none", cursor: (isClaiming || isClaimConfirming) ? "wait" : "pointer",
+                                  background: (isClaiming || isClaimConfirming) ? "rgba(34,197,94,.4)" : "linear-gradient(135deg, #22c55e, #16a34a)",
+                                  color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: font,
+                                  boxShadow: "0 4px 16px rgba(34,197,94,.3)",
+                                }}>
+                                {isClaiming || isClaimConfirming
+                                  ? (lang === "ko" ? "클레임 중..." : "Claiming...")
+                                  : (lang === "ko" ? `$${pendingClaim.toFixed(2)} 클레임` : `Claim $${pendingClaim.toFixed(2)}`)}
+                              </button>
+                            )}
+                            {claimSuccess && (
+                              <div style={{ marginTop: 8, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
+                                ✅ {lang === "ko" ? "클레임 완료!" : "Claimed!"}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     }

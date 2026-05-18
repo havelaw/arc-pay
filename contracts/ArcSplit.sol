@@ -78,7 +78,7 @@ contract ArcSplit {
         s.totalAmount = _totalAmount;
         s.perPerson = perPerson;
         s.memberCount = _memberCount;
-        s.paidCount = 1;
+        s.paidCount = 0;
         s.settled = false;
         s.createdAt = block.timestamp;
         s.secretHash = _secretHash;
@@ -103,7 +103,6 @@ contract ArcSplit {
         require(s.creator != address(0), "Split does not exist");
         require(!s.settled, "Already settled");
         require(!hasPaid[_splitId][msg.sender], "Already paid");
-        require(msg.sender != s.creator, "Creator cannot pay self");
         require(keccak256(abi.encodePacked(_secret)) == s.secretHash, "Invalid secret");
 
         hasPaid[_splitId][msg.sender] = true;
