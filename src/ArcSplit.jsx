@@ -917,8 +917,17 @@ export default function ArcSplit() {
                               </div>
                             )}
                             {claimSuccess && (
-                              <div style={{ marginTop: 8, fontSize: 12, color: "#22c55e", fontWeight: 600 }}>
-                                ✅ {lang === "ko" ? "수령 완료!" : "Claimed!"}
+                              <div style={{ marginTop: 10, padding: "12px", borderRadius: 10, background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.08)" }}>
+                                <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 600, marginBottom: 6 }}>
+                                  ✅ {lang === "ko" ? "수령 완료!" : "Claimed!"}
+                                </div>
+                                {claimHash && (
+                                  <a href={`https://testnet.arcscan.app/tx/${claimHash}`} target="_blank" rel="noopener noreferrer"
+                                    style={{ fontSize: 11, fontFamily: mono, color: "#6366F1", textDecoration: "none", fontWeight: 600 }}
+                                    onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                                    onMouseLeave={e => e.target.style.textDecoration = "none"}
+                                  >Tx: {claimHash.slice(0,10)}...{claimHash.slice(-6)} ↗</a>
+                                )}
                               </div>
                             )}
                           </div>
