@@ -609,7 +609,7 @@ export default function ArcSplit() {
                   border: "1px solid rgba(99,102,241,.1)",
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#6366F1", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
-                    📊 {lang === "ko" ? "온체인 통계" : "On-chain Stats"}
+                    📊 {lang === "ko" ? "내 활동" : "My Activity"}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     {[

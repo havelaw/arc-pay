@@ -182,9 +182,24 @@ export function useAllSplits(userAddress) {
     }))
   }, [count])
 
+  const hasPaidContracts = useMemo(() => {
+    if (!count || !userAddress) return []
+    return Array.from({ length: count }, (_, i) => ({
+      address: ARCSPLIT_ADDRESS,
+      abi: arcSplitAbi,
+      functionName: 'hasPaid',
+      args: [BigInt(i), userAddress],
+    }))
+  }, [count, userAddress])
+
   const { data: results, refetch: refetchSplits } = useReadContracts({
     contracts,
     query: { enabled: count > 0 && isContractDeployed() },
+  })
+
+  const { data: hasPaidResults, refetch: refetchHasPaid } = useReadContracts({
+    contracts: hasPaidContracts,
+    query: { enabled: hasPaidContracts.length > 0 && isContractDeployed() },
   })
 
   const splits = useMemo(() => {
@@ -193,6 +208,9 @@ export function useAllSplits(userAddress) {
       .map((r, i) => {
         if (r.status !== 'success') return null
         const [creator, title, totalAmount, perPerson, memberCount, paidCount, settled, createdAt, secretHash, claimable, claimed] = r.result
+        const isMine = userAddress && creator.toLowerCase() === userAddress.toLowerCase()
+        const iPaid = hasPaidResults?.[i]?.status === 'success' && hasPaidResults[i].result === true
+        if (!isMine && !iPaid) return null
         return {
           id: i,
           creator,
@@ -203,16 +221,17 @@ export function useAllSplits(userAddress) {
           paidCount,
           settled,
           createdAt: Number(createdAt),
-          isMine: userAddress && creator.toLowerCase() === userAddress.toLowerCase(),
+          isMine,
+          iPaid,
           claimableUSDC: parseFloat(formatUnits(claimable, USDC_DECIMALS)),
           claimedUSDC: parseFloat(formatUnits(claimed, USDC_DECIMALS)),
         }
       })
       .filter(Boolean)
       .reverse()
-  }, [results, userAddress])
+  }, [results, hasPaidResults, userAddress])
 
-  const refetch = () => { refetchCount(); refetchSplits(); }
+  const refetch = () => { refetchCount(); refetchSplits(); refetchHasPaid(); }
 
   return { splits, count, refetch }
 }
