@@ -2,6 +2,9 @@
   "functions": {
     "api/parse-receipt.js": {
       "maxDuration": 30
+    },
+    "api/parse-receipt-paid.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

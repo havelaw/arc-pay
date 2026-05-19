@@ -1,16 +1,56 @@
-# React + Vite
+# ArcSplit — Crypto Bill Splitting
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Toss/KakaoPay-style bill splitting dApp on Arc blockchain (USDC native gas).
 
-Currently, two official plugins are available:
+**Live**: [arc-pay.vercel.app](https://arc-pay.vercel.app)
+**Contract**: `0x1da6091dcd4572ee686e8756addd6c2b5145398b` (Arc Testnet)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## x402 Paid API — AI Receipt Scanner
 
-## React Compiler
+External AI agents can scan receipts via the x402 nanopayment protocol.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Endpoint**: `POST https://arc-pay.vercel.app/api/parse-receipt-paid`
+**Price**: $0.02 per call (USDC via x402)
+**Network**: Arc Testnet (`eip155:5042002`)
 
-## Expanding the ESLint configuration
+### Discovery (no payment needed)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```
+GET /api/parse-receipt-paid
+```
+
+Returns service info, pricing, and usage instructions.
+
+### Usage
+
+```
+POST /api/parse-receipt-paid
+Content-Type: application/json
+X-PAYMENT: <x402 payment payload>
+
+{
+  "image": "data:image/jpeg;base64,..."
+}
+```
+
+### Response
+
+```json
+{
+  "title": "Store Name",
+  "items": [{"name": "Coffee", "price": 5500}],
+  "total": 5500,
+  "currency": "KRW",
+  "_payment": {
+    "protocol": "x402",
+    "price": "$0.02",
+    "payer": "0x...",
+    "network": "eip155:5042002",
+    "transaction": "0x..."
+  }
+}
+```
+
+### For AI Agents (Claude Code, Cursor, etc.)
+
+This endpoint is x402-compatible. Agents with a Circle Agent Wallet can call it directly — the x402 client SDK handles payment automatically.
