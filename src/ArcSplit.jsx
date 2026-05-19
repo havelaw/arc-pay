@@ -60,9 +60,21 @@ export default function ArcSplit() {
     .filter(s => !s.isMine && !s.settled)
     .reduce((sum, s) => sum + s.perPersonUSDC, 0);
 
+  const saveSplitSecret = (splitId, secret) => {
+    const secrets = JSON.parse(localStorage.getItem("arcsplit-secrets") || "{}");
+    secrets[splitId] = secret;
+    localStorage.setItem("arcsplit-secrets", JSON.stringify(secrets));
+  };
+  const getSplitSecret = (splitId) => {
+    const secrets = JSON.parse(localStorage.getItem("arcsplit-secrets") || "{}");
+    return secrets[splitId] || null;
+  };
+
   useEffect(() => {
     if (createSuccess && splitCount !== undefined) {
-      setCreatedSplitId(Number(splitCount) - 1);
+      const newId = Number(splitCount) - 1;
+      setCreatedSplitId(newId);
+      if (createdSecret) saveSplitSecret(newId, createdSecret);
       refetchSplits();
     }
   }, [createSuccess, splitCount]);
@@ -542,6 +554,26 @@ export default function ArcSplit() {
                               : status === "pending" ? t.pendingCount(pending) : t.splitDone}
                           </div>
                         </div>
+                        {s.isMine && !s.settled && getSplitSecret(s.id) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const link = `${window.location.origin}${window.location.pathname}?split=${s.id}&key=${getSplitSecret(s.id)}`;
+                              navigator.clipboard.writeText(link);
+                              e.currentTarget.textContent = "✓";
+                              setTimeout(() => { e.currentTarget.textContent = "🔗"; }, 1500);
+                            }}
+                            style={{
+                              width: 28, height: 28, borderRadius: 8, border: "none",
+                              background: "rgba(99,102,241,.08)", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 12, color: "#6366F1", transition: "all .2s",
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,.15)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,.08)"}
+                            title={lang === "ko" ? "링크 복사" : "Copy link"}
+                          >🔗</button>
+                        )}
                         {s.isMine && !s.settled && (
                           <button
                             onClick={(e) => { e.stopPropagation(); cancelSplitOnChain(s.id); }}
