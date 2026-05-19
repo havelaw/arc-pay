@@ -2,14 +2,14 @@
 
 Toss/KakaoPay-style bill splitting dApp on Arc blockchain (USDC native gas).
 
-**Live**: [arc-pay.vercel.app](https://arc-pay.vercel.app)
+**Live**: [arc-pay-nine.vercel.app](https://arc-pay-nine.vercel.app)
 **Contract**: `0x1da6091dcd4572ee686e8756addd6c2b5145398b` (Arc Testnet)
 
 ## x402 Paid API — AI Receipt Scanner
 
 External AI agents can scan receipts via the x402 nanopayment protocol.
 
-**Endpoint**: `POST https://arc-pay.vercel.app/api/parse-receipt-paid`
+**Endpoint**: `POST https://arc-pay-nine.vercel.app/api/parse-receipt-paid`
 **Price**: $0.02 per call (USDC via x402)
 **Network**: Arc Testnet (`eip155:5042002`)
 
