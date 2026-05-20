@@ -117,6 +117,51 @@ export default function ArcSplit() {
   const [pendingPaySplitId, setPendingPaySplitId] = useState(null);
   const [approveComplete, setApproveComplete] = useState(false);
   const [historyTab, setHistoryTab] = useState("pending");
+  const [agentEnabled, setAgentEnabled] = useState(() => localStorage.getItem("arcsplit-agent-enabled") === "true");
+  const [agentLimit, setAgentLimit] = useState(() => Number(localStorage.getItem("arcsplit-agent-limit")) || 50);
+  const [agentStatus, setAgentStatus] = useState(null);
+  const [agentInfo, setAgentInfo] = useState(null);
+  const [agentPaying, setAgentPaying] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/agent-info').then(r => r.json()).then(setAgentInfo).catch(() => {});
+  }, []);
+
+  const toggleAgent = (val) => {
+    setAgentEnabled(val);
+    localStorage.setItem("arcsplit-agent-enabled", String(val));
+  };
+
+  const updateAgentLimit = (val) => {
+    const n = Math.max(1, Math.min(500, Number(val) || 50));
+    setAgentLimit(n);
+    localStorage.setItem("arcsplit-agent-limit", String(n));
+  };
+
+  const handleAgentPay = async (splitId, secret) => {
+    setAgentPaying(true);
+    setAgentStatus(null);
+    try {
+      const res = await fetch('/api/agent-pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ splitId, secret }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAgentStatus({ type: 'success', data });
+        refetchSplits();
+        refetchSplitData();
+        refetchHasPaid();
+      } else {
+        setAgentStatus({ type: 'error', message: data.error });
+      }
+    } catch (err) {
+      setAgentStatus({ type: 'error', message: err.message });
+    } finally {
+      setAgentPaying(false);
+    }
+  };
 
   const { data: urlSplitData, refetch: refetchSplitData } = useGetSplit(urlSplitId);
   const { data: alreadyPaid, refetch: refetchHasPaid } = useHasPaid(urlSplitId, address);
@@ -633,9 +678,114 @@ export default function ArcSplit() {
               );
             })()}
 
+            {/* AI Agent Auto-Pay */}
+            <div style={{
+              marginTop: 24, padding: "20px", borderRadius: 20,
+              background: agentEnabled
+                ? "linear-gradient(135deg, rgba(34,197,94,.04), rgba(16,185,129,.02))"
+                : "rgba(255,255,255,.6)",
+              border: `1px solid ${agentEnabled ? "rgba(34,197,94,.15)" : "rgba(0,0,0,.06)"}`,
+              transition: "all .3s",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 12,
+                    background: agentEnabled ? "linear-gradient(135deg, #22c55e, #16a34a)" : "rgba(0,0,0,.06)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, transition: "all .3s",
+                    boxShadow: agentEnabled ? "0 4px 14px rgba(34,197,94,.3)" : "none",
+                  }}>🤖</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{t.agentAutoPay}</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{t.agentAutoPayDesc}</div>
+                  </div>
+                </div>
+                <button onClick={() => toggleAgent(!agentEnabled)} style={{
+                  width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer",
+                  background: agentEnabled ? "#22c55e" : "#d1d5db",
+                  position: "relative", transition: "background .3s",
+                }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: "50%", background: "#fff",
+                    position: "absolute", top: 2,
+                    left: agentEnabled ? 24 : 2,
+                    transition: "left .3s",
+                    boxShadow: "0 1px 4px rgba(0,0,0,.15)",
+                  }} />
+                </button>
+              </div>
+
+              {agentEnabled && (
+                <div style={{ animation: "fadeUp .3s ease" }}>
+                  <div style={{
+                    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10,
+                  }}>
+                    <div style={{
+                      padding: "12px 14px", borderRadius: 12,
+                      background: "rgba(255,255,255,.7)", border: "1px solid rgba(0,0,0,.04)",
+                    }}>
+                      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>{t.agentLimit}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, fontFamily: mono, color: "#1a1a2e" }}>
+                          ${agentLimit}
+                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <button onClick={() => updateAgentLimit(agentLimit + 10)} style={{
+                            width: 18, height: 14, borderRadius: 4, border: "none", cursor: "pointer",
+                            background: "rgba(99,102,241,.08)", color: "#6366F1", fontSize: 8, fontWeight: 800,
+                          }}>▲</button>
+                          <button onClick={() => updateAgentLimit(agentLimit - 10)} style={{
+                            width: 18, height: 14, borderRadius: 4, border: "none", cursor: "pointer",
+                            background: "rgba(99,102,241,.08)", color: "#6366F1", fontSize: 8, fontWeight: 800,
+                          }}>▼</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: "12px 14px", borderRadius: 12,
+                      background: "rgba(255,255,255,.7)", border: "1px solid rgba(0,0,0,.04)",
+                    }}>
+                      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>{t.agentBalance}</div>
+                      {agentInfo?.configured ? (
+                        <div>
+                          <span style={{ fontSize: 16, fontWeight: 800, fontFamily: mono, color: "#22c55e" }}>
+                            ${agentInfo.balanceUSDC}
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                  {agentInfo?.configured && (
+                    <div style={{
+                      padding: "8px 12px", borderRadius: 10, marginBottom: 10,
+                      background: "rgba(255,255,255,.5)", border: "1px solid rgba(0,0,0,.03)",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                    }}>
+                      <div style={{ fontSize: 10, color: "#94a3b8" }}>{t.agentWalletLabel}</div>
+                      <div style={{ fontSize: 11, fontFamily: mono, color: "#64748b", fontWeight: 600 }}>
+                        {agentInfo.address?.slice(0,6)}...{agentInfo.address?.slice(-4)}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{
+                    padding: "10px 14px", borderRadius: 10,
+                    background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.08)",
+                    fontSize: 11, color: "#64748b", lineHeight: 1.5,
+                  }}>
+                    {lang === "ko"
+                      ? "💡 정산 링크를 열면 에이전트가 자동으로 결제해요. 설정한 한도 내에서만 작동합니다."
+                      : "💡 When you open a split link, the agent pays automatically within your set limit."}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Why ArcSplit */}
             <div style={{
-              marginTop: 24, padding: "16px 20px", borderRadius: 16,
+              marginTop: 10, padding: "16px 20px", borderRadius: 16,
               background: "rgba(255,255,255,.5)", border: "1px solid rgba(99,102,241,.08)",
               display: "flex", alignItems: "center", gap: 14,
             }}>
@@ -1169,26 +1319,99 @@ export default function ArcSplit() {
                     );
 
                     return (
-                      <button onClick={() => handlePay(urlSplitId, perUSDC, urlSecret)} disabled={paying || !contractReady}
-                        style={{
-                          width: "100%", padding: "18px", borderRadius: 18,
-                          border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
-                          background: !contractReady ? "rgba(0,0,0,.06)" : paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                          color: !contractReady ? "#94a3b8" : "#fff",
-                          fontSize: 16, fontWeight: 700, fontFamily: font,
-                          boxShadow: (contractReady && !paying) ? "0 6px 24px rgba(99,102,241,.3)" : "none",
-                          transition: "all .3s",
-                        }}>
-                        {!isConnected ? t.connectWallet : isWrongChain ? (lang === "ko" ? "네트워크 전환 필요" : "Switch to Arc") : paying ? (
-                          <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
-                            {[t.approving, t.sending, t.done].map((s, i) => (
-                              <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
-                                {payStep > i ? "✓ " : ""}{s}
-                              </span>
-                            ))}
+                      <div>
+                        <button onClick={() => handlePay(urlSplitId, perUSDC, urlSecret)} disabled={paying || !contractReady}
+                          style={{
+                            width: "100%", padding: "18px", borderRadius: 18,
+                            border: "none", cursor: (paying || !contractReady) ? "wait" : "pointer",
+                            background: !contractReady ? "rgba(0,0,0,.06)" : paying ? "rgba(99,102,241,.4)" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                            color: !contractReady ? "#94a3b8" : "#fff",
+                            fontSize: 16, fontWeight: 700, fontFamily: font,
+                            boxShadow: (contractReady && !paying) ? "0 6px 24px rgba(99,102,241,.3)" : "none",
+                            transition: "all .3s",
+                          }}>
+                          {!isConnected ? t.connectWallet : isWrongChain ? (lang === "ko" ? "네트워크 전환 필요" : "Switch to Arc") : paying ? (
+                            <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 12, fontFamily: mono }}>
+                              {[t.approving, t.sending, t.done].map((s, i) => (
+                                <span key={i} style={{ opacity: payStep > i ? 1 : payStep === i ? .6 : .25, fontWeight: payStep >= i ? 700 : 400, transition: "all .3s" }}>
+                                  {payStep > i ? "✓ " : ""}{s}
+                                </span>
+                              ))}
+                            </div>
+                          ) : t.sendUSDC(perUSDC.toFixed(2))}
+                        </button>
+
+                        {agentEnabled && urlSecret && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                              marginBottom: 10, color: "#94a3b8", fontSize: 12,
+                            }}>
+                              <div style={{ flex: 1, height: 1, background: "rgba(0,0,0,.06)" }} />
+                              <span>{lang === "ko" ? "또는" : "or"}</span>
+                              <div style={{ flex: 1, height: 1, background: "rgba(0,0,0,.06)" }} />
+                            </div>
+
+                            {agentStatus?.type === 'success' ? (
+                              <div style={{
+                                padding: "16px", borderRadius: 16, textAlign: "center",
+                                background: "rgba(34,197,94,.04)", border: "1px solid rgba(34,197,94,.12)",
+                                animation: "popIn .4s ease",
+                              }}>
+                                <div style={{ fontSize: 28, marginBottom: 6 }}>🤖 ✅</div>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: "#22c55e" }}>{t.agentPaySuccess}</div>
+                                <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                                  ${agentStatus.data.amountUSDC} USDC
+                                </div>
+                                <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: mono, marginTop: 4 }}>
+                                  {lang === "ko" ? "에이전트" : "Agent"}: {agentStatus.data.agentWallet?.slice(0,6)}...{agentStatus.data.agentWallet?.slice(-4)}
+                                </div>
+                                {agentStatus.data.payTx && (
+                                  <a href={`https://testnet.arcscan.app/tx/${agentStatus.data.payTx}`} target="_blank" rel="noopener noreferrer"
+                                    style={{ fontSize: 11, fontFamily: mono, color: "#6366F1", textDecoration: "none", fontWeight: 600, marginTop: 6, display: "inline-block" }}
+                                    onMouseEnter={e => e.target.style.textDecoration = "underline"}
+                                    onMouseLeave={e => e.target.style.textDecoration = "none"}
+                                  >Tx: {agentStatus.data.payTx.slice(0,10)}...{agentStatus.data.payTx.slice(-6)} ↗</a>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleAgentPay(urlSplitId, urlSecret)}
+                                disabled={agentPaying || perUSDC > agentLimit}
+                                style={{
+                                  width: "100%", padding: "16px", borderRadius: 16,
+                                  border: "1.5px solid rgba(34,197,94,.2)",
+                                  cursor: (agentPaying || perUSDC > agentLimit) ? "not-allowed" : "pointer",
+                                  background: agentPaying ? "rgba(34,197,94,.08)" : "rgba(34,197,94,.04)",
+                                  color: perUSDC > agentLimit ? "#94a3b8" : "#22c55e",
+                                  fontSize: 14, fontWeight: 700, fontFamily: font,
+                                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                                  transition: "all .3s",
+                                }}
+                                onMouseEnter={e => { if (!agentPaying && perUSDC <= agentLimit) e.currentTarget.style.background = "rgba(34,197,94,.1)"; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = agentPaying ? "rgba(34,197,94,.08)" : "rgba(34,197,94,.04)"; }}
+                              >
+                                <span style={{ fontSize: 18 }}>🤖</span>
+                                {agentPaying
+                                  ? t.agentPaying
+                                  : perUSDC > agentLimit
+                                    ? t.agentExceedsLimit(perUSDC.toFixed(2), agentLimit)
+                                    : t.agentPayButton}
+                              </button>
+                            )}
+
+                            {agentStatus?.type === 'error' && (
+                              <div style={{
+                                marginTop: 8, padding: "10px 14px", borderRadius: 10,
+                                background: "rgba(239,68,68,.04)", border: "1px solid rgba(239,68,68,.1)",
+                                fontSize: 12, color: "#ef4444", fontWeight: 600,
+                              }}>
+                                {agentStatus.message}
+                              </div>
+                            )}
                           </div>
-                        ) : t.sendUSDC(perUSDC.toFixed(2))}
-                      </button>
+                        )}
+                      </div>
                     );
                   })()}
                 </div>

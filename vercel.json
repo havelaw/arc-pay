@@ -5,6 +5,12 @@
     },
     "api/parse-receipt-paid.js": {
       "maxDuration": 30
+    },
+    "api/agent-pay.js": {
+      "maxDuration": 60
+    },
+    "api/agent-info.js": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
