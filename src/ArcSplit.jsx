@@ -49,7 +49,7 @@ export default function ArcSplit() {
   const { approve: approveUSDC, isPending: isApproving, isConfirming: isApproveConfirming, isSuccess: approveSuccess, error: approveError } = useApproveUSDC();
   const { payShare: payShareOnChain, isPending: isPaying, isConfirming: isPayConfirming, isSuccess: paySuccess, hash: payHash, error: payError } = usePayShare();
   const { claim: claimOnChain, isPending: isClaiming, isConfirming: isClaimConfirming, isSuccess: claimSuccess, hash: claimHash, error: claimError } = useClaim();
-  const { cancelSplit: cancelSplitOnChain, isPending: isCancelling, isSuccess: cancelSuccess } = useCancelSplit();
+  const { cancelSplit: cancelSplitOnChain, isPending: isCancelling, isSuccess: cancelSuccess, error: cancelError } = useCancelSplit();
   const { data: splitCount } = useSplitCount();
   const { splits: allSplits, refetch: refetchSplits } = useAllSplits(address);
 
@@ -90,6 +90,28 @@ export default function ArcSplit() {
   useEffect(() => {
     if (cancelSuccess) { refetchSplits(); }
   }, [cancelSuccess]);
+
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef();
+  const showToast = (message, type = "error") => {
+    clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  useEffect(() => {
+    if (claimError) {
+      const msg = claimError?.shortMessage || claimError?.message || (lang === "ko" ? "클레임에 실패했어요" : "Claim failed");
+      showToast(msg);
+    }
+  }, [claimError]);
+
+  useEffect(() => {
+    if (cancelError) {
+      const msg = cancelError?.shortMessage || cancelError?.message || (lang === "ko" ? "취소에 실패했어요" : "Cancel failed");
+      showToast(msg);
+    }
+  }, [cancelError]);
 
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [receiptParsing, setReceiptParsing] = useState(false);
@@ -228,6 +250,8 @@ export default function ArcSplit() {
     if (settling && createError) {
       setSettling(false);
       setSettleStep(0);
+      const msg = createError?.shortMessage || createError?.message || (lang === "ko" ? "정산 생성에 실패했어요" : "Failed to create split");
+      showToast(msg);
     }
   }, [settling, createError]);
 
@@ -321,6 +345,9 @@ export default function ArcSplit() {
       setPaying(false);
       setPayStep(0);
       setApproveComplete(false);
+      const err = payError || approveError;
+      const msg = err?.shortMessage || err?.message || (lang === "ko" ? "결제에 실패했어요" : "Payment failed");
+      showToast(msg);
     }
   }, [paying, payError, approveError]);
 
@@ -340,6 +367,7 @@ export default function ArcSplit() {
   return (
     <div style={{
       minHeight: "100vh",
+      paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)",
       background: "linear-gradient(165deg, #F0F4FF 0%, #FAFBFF 30%, #FFF8F0 70%, #F5F0FF 100%)",
       color: "#1a1a2e", fontFamily: font, position: "relative", overflow: "hidden",
     }}>
@@ -604,9 +632,16 @@ export default function ArcSplit() {
                             onClick={(e) => {
                               e.stopPropagation();
                               const link = `${window.location.origin}${window.location.pathname}?split=${s.id}&key=${getSplitSecret(s.id)}`;
-                              navigator.clipboard.writeText(link);
-                              e.currentTarget.textContent = "✓";
-                              setTimeout(() => { e.currentTarget.textContent = "🔗"; }, 1500);
+                              const shareText = lang === "ko"
+                                ? `${s.title} 더치페이 요청! 1인당 $${s.perPersonUSDC.toFixed(2)} USDC`
+                                : `Split: ${s.title} — $${s.perPersonUSDC.toFixed(2)} USDC per person`;
+                              if (typeof navigator.share === "function") {
+                                navigator.share({ title: `ArcSplit - ${s.title}`, text: shareText, url: link }).catch(() => {});
+                              } else {
+                                navigator.clipboard.writeText(link);
+                                e.currentTarget.textContent = "✓";
+                                setTimeout(() => { e.currentTarget.textContent = "🔗"; }, 1500);
+                              }
                             }}
                             style={{
                               width: 28, height: 28, borderRadius: 8, border: "none",
@@ -1111,15 +1146,63 @@ export default function ArcSplit() {
                 }}>
                   {shareUrl}
                 </div>
-                <button onClick={handleCopyLink} style={{
-                  width: "100%", marginTop: 10, padding: "10px", borderRadius: 10,
-                  border: "1.5px solid rgba(99,102,241,.15)", background: linkCopied ? "rgba(34,197,94,.06)" : "rgba(99,102,241,.04)",
-                  color: linkCopied ? "#22c55e" : "#6366F1",
-                  fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: font,
-                  transition: "all .2s",
-                }}>
-                  {linkCopied ? `✓ ${t.copied}` : `📋 ${t.copyLink}`}
-                </button>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => {
+                    const text = lang === "ko"
+                      ? `${title} 더치페이 요청이에요! 1인당 ${fmtCurrency(perPerson)} ($${toUSDC(perPerson)} USDC)`
+                      : `Split request for ${title}! ${fmtCurrency(perPerson)} per person ($${toUSDC(perPerson)} USDC)`;
+                    window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`, "_blank");
+                  }} style={{
+                    padding: "12px", borderRadius: 12, border: "none", cursor: "pointer",
+                    background: "rgba(0,136,204,.08)", color: "#0088cc",
+                    fontSize: 13, fontWeight: 700, fontFamily: font,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all .2s",
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(0,136,204,.15)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(0,136,204,.08)"}
+                  >
+                    <span style={{ fontSize: 16 }}>✈️</span> Telegram
+                  </button>
+
+                  <button onClick={handleCopyLink} style={{
+                    padding: "12px", borderRadius: 12,
+                    border: "none", cursor: "pointer",
+                    background: linkCopied ? "rgba(34,197,94,.08)" : "rgba(99,102,241,.06)",
+                    color: linkCopied ? "#22c55e" : "#6366F1",
+                    fontSize: 13, fontWeight: 700, fontFamily: font,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all .2s",
+                  }}
+                    onMouseEnter={e => { if (!linkCopied) e.currentTarget.style.background = "rgba(99,102,241,.12)"; }}
+                    onMouseLeave={e => { if (!linkCopied) e.currentTarget.style.background = "rgba(99,102,241,.06)"; }}
+                  >
+                    {linkCopied ? <>✓ {t.copied}</> : <>📋 {t.copyLink}</>}
+                  </button>
+                </div>
+
+                {typeof navigator.share === "function" && (
+                  <button onClick={() => {
+                    const text = lang === "ko"
+                      ? `${title} 더치페이 요청! 1인당 ${fmtCurrency(perPerson)} ($${toUSDC(perPerson)} USDC)`
+                      : `Split request: ${title} — ${fmtCurrency(perPerson)} per person ($${toUSDC(perPerson)} USDC)`;
+                    navigator.share({ title: `ArcSplit - ${title}`, text, url: shareUrl }).catch(() => {});
+                  }} style={{
+                    width: "100%", marginTop: 8, padding: "12px", borderRadius: 12,
+                    border: "1.5px solid rgba(99,102,241,.12)", background: "rgba(99,102,241,.03)",
+                    color: "#6366F1", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: font,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all .2s",
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,.08)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,.03)"}
+                  >
+                    <span style={{ fontSize: 16 }}>📤</span>
+                    {lang === "ko" ? "카카오톡 · 메시지 등으로 공유" : "Share via KakaoTalk, Messages, etc."}
+                  </button>
+                )}
+
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8, lineHeight: 1.5 }}>
                   {t.shareLinkDesc}
                 </div>
@@ -1523,6 +1606,34 @@ export default function ArcSplit() {
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOAST */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
+          zIndex: 200, maxWidth: 400, width: "calc(100% - 40px)",
+          animation: "fadeUp .3s ease",
+        }}>
+          <div style={{
+            padding: "14px 18px", borderRadius: 16,
+            background: toast.type === "error" ? "rgba(239,68,68,.95)" : "rgba(34,197,94,.95)",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 8px 32px rgba(0,0,0,.18)",
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>{toast.type === "error" ? "⚠️" : "✅"}</span>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#fff", lineHeight: 1.4, wordBreak: "break-word" }}>
+              {toast.message}
+            </div>
+            <button onClick={() => setToast(null)} style={{
+              background: "rgba(255,255,255,.2)", border: "none", borderRadius: 8,
+              width: 28, height: 28, cursor: "pointer", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff", fontSize: 14, fontWeight: 700,
+            }}>✕</button>
           </div>
         </div>
       )}
