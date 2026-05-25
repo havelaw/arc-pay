@@ -872,7 +872,7 @@ export default function ArcSplit() {
             </div>
 
             {/* Contact */}
-            <a href="https://x.com/havelaw11" target="_blank" rel="noopener noreferrer" style={{
+            <a href="https://x.com/ArcSplit" target="_blank" rel="noopener noreferrer" style={{
               marginTop: 10, padding: "14px 18px", borderRadius: 14, textDecoration: "none",
               background: "rgba(255,255,255,.5)", border: "1px solid rgba(0,0,0,.04)",
               display: "flex", alignItems: "center", gap: 12, transition: "all .2s",
