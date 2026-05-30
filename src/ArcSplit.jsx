@@ -42,7 +42,7 @@ export default function ArcSplit() {
   const isWrongChain = isConnected && chainId !== 5042002;
 
   const { data: usdcRaw } = useUSDCBalance(address);
-  const usdcBalance = usdcRaw ? parseFloat(formatUnits(usdcRaw, 6)) : null;
+  const usdcBalance = usdcRaw !== undefined ? parseFloat(formatUnits(usdcRaw, 6)) : null;
   const contractReady = isConnected && !isWrongChain && isContractDeployed();
 
   const { createSplit: createSplitOnChain, isPending: isCreating, isConfirming: isCreateConfirming, isSuccess: createSuccess, hash: createHash, error: createError } = useCreateSplit();
@@ -51,7 +51,7 @@ export default function ArcSplit() {
   const { claim: claimOnChain, isPending: isClaiming, isConfirming: isClaimConfirming, isSuccess: claimSuccess, hash: claimHash, error: claimError } = useClaim();
   const { cancelSplit: cancelSplitOnChain, isPending: isCancelling, isSuccess: cancelSuccess, error: cancelError } = useCancelSplit();
   const { data: splitCount } = useSplitCount();
-  const { splits: allSplits, refetch: refetchSplits } = useAllSplits(address);
+  const { splits: allSplits, refetch: refetchSplits, isLoading: splitsLoading } = useAllSplits(address);
 
   const toReceiveUSDC = allSplits
     .filter(s => s.isMine && !s.settled)
@@ -375,6 +375,7 @@ export default function ArcSplit() {
         @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
         @keyframes popIn { from { opacity:0; transform:scale(.92); } to { opacity:1; transform:scale(1); } }
         @keyframes float { 0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)} }
+        @keyframes shimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
         @keyframes checkDraw { from{stroke-dashoffset:24}to{stroke-dashoffset:0} }
         @keyframes confetti1 { 0%{transform:translate(0,0) rotate(0deg);opacity:1}100%{transform:translate(40px,-80px) rotate(200deg);opacity:0} }
         @keyframes confetti2 { 0%{transform:translate(0,0) rotate(0deg);opacity:1}100%{transform:translate(-30px,-90px) rotate(-180deg);opacity:0} }
@@ -454,9 +455,21 @@ export default function ArcSplit() {
               <div style={{ position: "absolute", bottom: -20, left: -20, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,.05)" }} />
               <div style={{ position: "relative", zIndex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 500, opacity: .8, marginBottom: 6 }}>{t.myBalance}</div>
-                <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 2 }}>
-                  $<AnimNum value={usdcBalance ?? 1247.50} decimals={2} />
-                </div>
+                {!isConnected ? (
+                  <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 2, opacity: .55 }}>
+                    $0.00
+                  </div>
+                ) : usdcBalance === null ? (
+                  <div style={{
+                    width: 150, height: 40, marginBottom: 4, borderRadius: 10,
+                    background: "linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.28) 50%, rgba(255,255,255,.12) 100%)",
+                    backgroundSize: "200px 100%", animation: "shimmer 1.2s infinite linear",
+                  }} />
+                ) : (
+                  <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 2 }}>
+                    $<AnimNum value={usdcBalance} decimals={2} />
+                  </div>
+                )}
                 <div style={{ fontSize: 12, fontWeight: 500, opacity: .6, fontFamily: mono }}>{t.usdcOnArc}</div>
                 <div style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
@@ -549,7 +562,25 @@ export default function ArcSplit() {
                 ))}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {allSplits.filter(s => {
+                {splitsLoading && isConnected && [0, 1, 2].map(i => (
+                  <div key={`sk-${i}`} style={{
+                    padding: "16px 18px", borderRadius: 18,
+                    background: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.8)",
+                    boxShadow: "0 2px 12px rgba(0,0,0,.03)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    animation: `fadeUp .35s ease ${.04 * i}s both`,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(90deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.08) 50%, rgba(0,0,0,.04) 100%)", backgroundSize: "200px 100%", animation: "shimmer 1.2s infinite linear" }} />
+                      <div>
+                        <div style={{ width: 110, height: 13, borderRadius: 6, background: "linear-gradient(90deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.08) 50%, rgba(0,0,0,.04) 100%)", backgroundSize: "200px 100%", animation: "shimmer 1.2s infinite linear" }} />
+                        <div style={{ width: 150, height: 10, marginTop: 8, borderRadius: 6, background: "linear-gradient(90deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.08) 50%, rgba(0,0,0,.04) 100%)", backgroundSize: "200px 100%", animation: "shimmer 1.2s infinite linear" }} />
+                      </div>
+                    </div>
+                    <div style={{ width: 56, height: 15, borderRadius: 6, background: "linear-gradient(90deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.08) 50%, rgba(0,0,0,.04) 100%)", backgroundSize: "200px 100%", animation: "shimmer 1.2s infinite linear" }} />
+                  </div>
+                ))}
+                {!(splitsLoading && isConnected) && allSplits.filter(s => {
                   const hasUnclaimed = s.isMine && (s.claimableUSDC - s.claimedUSDC) > 0;
                   if (historyTab === "pending") return !s.settled || hasUnclaimed;
                   return s.settled && !hasUnclaimed;
@@ -1423,6 +1454,23 @@ export default function ArcSplit() {
                             </div>
                           ) : t.sendUSDC(perUSDC.toFixed(2))}
                         </button>
+
+                        <div style={{
+                          marginTop: 12, padding: "12px 14px", borderRadius: 14,
+                          background: "linear-gradient(135deg, rgba(34,197,94,.06), rgba(16,185,129,.04))",
+                          border: "1px solid rgba(34,197,94,.12)",
+                          display: "flex", alignItems: "center", gap: 12,
+                        }}>
+                          <div style={{
+                            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                            background: "rgba(34,197,94,.1)",
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                          }}>⛽</div>
+                          <div style={{ lineHeight: 1.35 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#16a34a" }}>{t.noGasTitle}</div>
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{t.noGasDesc}</div>
+                          </div>
+                        </div>
 
                         {agentEnabled && urlSecret && (
                           <div style={{ marginTop: 10 }}>

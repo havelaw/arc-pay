@@ -169,7 +169,7 @@ export function useSplitCount() {
 }
 
 export function useAllSplits(userAddress) {
-  const { data: countRaw, refetch: refetchCount } = useSplitCount()
+  const { data: countRaw, refetch: refetchCount, isLoading: countLoading } = useSplitCount()
   const count = countRaw !== undefined ? Number(countRaw) : 0
 
   const contracts = useMemo(() => {
@@ -192,7 +192,7 @@ export function useAllSplits(userAddress) {
     }))
   }, [count, userAddress])
 
-  const { data: results, refetch: refetchSplits } = useReadContracts({
+  const { data: results, refetch: refetchSplits, isLoading: splitsLoading } = useReadContracts({
     contracts,
     query: { enabled: count > 0 && isContractDeployed() },
   })
@@ -233,5 +233,7 @@ export function useAllSplits(userAddress) {
 
   const refetch = () => { refetchCount(); refetchSplits(); refetchHasPaid(); }
 
-  return { splits, count, refetch }
+  const isLoading = countLoading || (count > 0 && splitsLoading)
+
+  return { splits, count, refetch, isLoading }
 }

@@ -80,6 +80,8 @@ const translations = {
     agentWalletLabel: '에이전트 지갑',
     agentNotConfigured: '서버에 에이전트 지갑이 설정되지 않았어요',
     agentExceedsLimit: (amt, limit) => `$${amt}이(가) 한도($${limit})를 초과해요`,
+    noGasTitle: 'ETH·가스토큰 필요 없어요',
+    noGasDesc: 'USDC로 가스비까지 한 번에 — Arc가 알아서 처리해요',
   },
   en: {
     appName: 'ArcSplit',
@@ -162,6 +164,8 @@ const translations = {
     agentWalletLabel: 'Agent Wallet',
     agentNotConfigured: 'Agent wallet not configured on server',
     agentExceedsLimit: (amt, limit) => `$${amt} exceeds limit ($${limit})`,
+    noGasTitle: 'No ETH or gas token needed',
+    noGasDesc: 'Pay gas in USDC — handled natively by Arc',
   },
 }
 
